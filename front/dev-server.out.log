@@ -1,0 +1,79 @@
+
+> trading-dashboard@0.1.0 dev
+> next dev --port 3001
+
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3001
+
+ ✓ Starting...
+ ✓ Ready in 3.6s
+ ○ Compiling / ...
+ ✓ Compiled / in 4.6s (485 modules)
+ GET / 307 in 4902ms
+ ✓ Compiled in 491ms (232 modules)
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 1591ms (563 modules)
+ GET /dashboard 200 in 1785ms
+ ✓ Compiled in 2s (278 modules)
+ ✓ Compiled in 754ms (278 modules)
+ ✓ Compiled in 524ms (278 modules)
+ ✓ Compiled in 391ms (278 modules)
+ ✓ Compiled in 373ms (278 modules)
+ ✓ Compiled in 770ms (278 modules)
+ ✓ Compiled in 444ms (278 modules)
+ ✓ Compiled in 768ms (278 modules)
+ ✓ Compiled in 1697ms (278 modules)
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 1399ms (291 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 2.2s (778 modules)
+ GET /dashboard 500 in 4245ms
+ GET /dashboard 200 in 247ms
+ ○ Compiling /history ...
+ ✓ Compiled /history in 770ms (784 modules)
+ GET /history 200 in 1116ms
+ GET /dashboard 200 in 68ms
+ ✓ Compiled in 5.4s (511 modules)
+ ✓ Compiled in 1698ms (463 modules)
+ ✓ Compiled in 1380ms (463 modules)
+ ✓ Compiled in 433ms (463 modules)
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3001
+
+ ✓ Starting...
+ ✓ Ready in 4.3s
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 9.6s (568 modules)
+ GET /dashboard/ 200 in 10382ms
+ ○ Compiling /history ...
+ ✓ Compiled /history in 10.6s (562 modules)
+ GET /history/ 200 in 9699ms
+ ✓ Compiled in 1495ms (576 modules)
+ ✓ Compiled in 882ms (576 modules)
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3001
+
+ ✓ Starting...
+ ✓ Ready in 8.2s
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 8.5s (570 modules)
+ GET /dashboard/ 200 in 8979ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1339ms (559 modules)
+ GET /404/ 404 in 933ms
+ GET /not-real-page/ 404 in 46ms
+ ✓ Compiled in 1746ms (279 modules)
+ ✓ Compiled in 4.8s (279 modules)
+ ✓ Compiled in 1401ms (279 modules)
+ ✓ Compiled in 376ms (279 modules)
+ ✓ Compiled in 5.4s (279 modules)
+ ✓ Compiled in 967ms (279 modules)
+ ✓ Compiled in 614ms (279 modules)
+ ✓ Compiled in 595ms (279 modules)
+ ✓ Compiled in 478ms (279 modules)
+ ✓ Compiled in 612ms (279 modules)
+ ✓ Compiled in 3.2s (279 modules)
+ ✓ Compiled in 746ms (279 modules)
+ ✓ Compiled in 455ms (279 modules)
+ ✓ Compiled in 634ms (279 modules)
+ ✓ Compiled in 340ms (279 modules)
