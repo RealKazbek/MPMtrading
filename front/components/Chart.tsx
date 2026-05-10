@@ -1,271 +1,277 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useTradingStore, Instrument } from '@/store/tradingStore'
-import {
-  generateInitialCandles,
-  generateNextCandle,
-  CandleData,
-  INSTRUMENTS,
-} from '@/lib/mockData'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { formatPnL, formatPrice } from '@/lib/format'
+import { useTradingStore, type CandleData, type Instrument } from '@/store/tradingStore'
+import InlineMessage from '@/components/ui/InlineMessage'
+import Skeleton from '@/components/ui/Skeleton'
+import SurfaceCard from '@/components/ui/SurfaceCard'
 
 type Props = {
   selectedInstrument: Instrument
-  onInstrumentChange: (i: Instrument) => void
+  onInstrumentChange: (instrument: Instrument) => void
 }
 
 export default function Chart({ selectedInstrument, onInstrumentChange }: Props) {
   const chartRef = useRef<HTMLDivElement>(null)
-  const chartInstance = useRef<unknown>(null)
   const seriesRef = useRef<unknown>(null)
-  const candlesRef = useRef<CandleData[]>([])
-  const markersRef = useRef<unknown[]>([])
-  const { activeTrades, updatePrices, currentPrices, updateTradePnL } = useTradingStore()
+  const { activeTrades, candles, chartState, instruments, latestPrice, subscribeSymbol } = useTradingStore(
+    useShallow((state) => ({
+      activeTrades: state.activeTrades,
+      candles: state.candlesBySymbol[selectedInstrument] ?? [],
+      chartState: state.chartStates[selectedInstrument],
+      instruments: state.instruments,
+      latestPrice: state.currentPrices[selectedInstrument],
+      subscribeSymbol: state.subscribeSymbol,
+    }))
+  )
+
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null)
   const [priceChange, setPriceChange] = useState<'up' | 'down' | null>(null)
+  const previousLastPrice = useRef<number | null>(null)
+
+  const instrumentMeta = useMemo(
+    () => instruments.find((instrument) => instrument.symbol === selectedInstrument),
+    [instruments, selectedInstrument]
+  )
+  const pricePrecision = instrumentMeta?.pricePrecision
+  const instrumentTrades = useMemo(
+    () => activeTrades.filter((trade) => trade.instrument === selectedInstrument),
+    [activeTrades, selectedInstrument]
+  )
 
   useEffect(() => {
-    let chart: unknown
+    subscribeSymbol(selectedInstrument)
+  }, [selectedInstrument, subscribeSymbol])
+
+  useEffect(() => {
+    let mounted = true
     let cleanupFn: (() => void) | undefined
 
     const init = async () => {
-      if (!chartRef.current) return
+      if (!chartRef.current || !mounted) return
 
       const { createChart } = await import('lightweight-charts')
+      if (!chartRef.current || !mounted) return
 
       chartRef.current.innerHTML = ''
 
-      chart = createChart(chartRef.current, {
+      const chart = createChart(chartRef.current, {
         width: chartRef.current.clientWidth,
         height: chartRef.current.clientHeight,
         layout: {
           background: { color: 'transparent' },
-          textColor: '#be185d',
-          fontFamily: "'DM Sans', sans-serif",
+          textColor: '#7f6770',
+          fontFamily: 'var(--font-body)',
         },
         grid: {
-          vertLines: { color: 'rgba(249,168,212,0.2)' },
-          horzLines: { color: 'rgba(249,168,212,0.15)' },
+          horzLines: { color: 'rgba(241, 217, 227, 0.45)' },
+          vertLines: { color: 'rgba(241, 217, 227, 0.6)' },
         },
         crosshair: {
-          vertLine: { color: 'rgba(244,114,182,0.5)', labelBackgroundColor: '#f472b6' },
-          horzLine: { color: 'rgba(244,114,182,0.5)', labelBackgroundColor: '#f472b6' },
+          horzLine: { color: 'rgba(239, 79, 136, 0.4)', labelBackgroundColor: '#ef4f88' },
+          vertLine: { color: 'rgba(239, 79, 136, 0.4)', labelBackgroundColor: '#ef4f88' },
         },
+        handleScale: true,
+        handleScroll: true,
         rightPriceScale: {
-          borderColor: 'rgba(249,168,212,0.3)',
+          borderColor: 'rgba(231, 196, 211, 0.75)',
         },
         timeScale: {
-          borderColor: 'rgba(249,168,212,0.3)',
-          timeVisible: true,
+          borderColor: 'rgba(231, 196, 211, 0.75)',
           secondsVisible: false,
+          timeVisible: true,
         },
-        handleScroll: true,
-        handleScale: true,
       })
 
-      chartInstance.current = chart
-
-      const series = (chart as { addCandlestickSeries: (opts: unknown) => unknown }).addCandlestickSeries({
-        upColor: '#10b981',
-        downColor: '#f43f5e',
-        borderUpColor: '#059669',
-        borderDownColor: '#e11d48',
-        wickUpColor: '#10b981',
-        wickDownColor: '#f43f5e',
+      const series = (chart as { addCandlestickSeries: (options: unknown) => unknown }).addCandlestickSeries({
+        borderDownColor: '#df3e65',
+        borderUpColor: '#18a775',
+        downColor: '#ef476f',
+        upColor: '#1bbf83',
+        wickDownColor: '#ef476f',
+        wickUpColor: '#1bbf83',
       })
 
       seriesRef.current = series
 
-      const candles = generateInitialCandles(selectedInstrument)
-      candlesRef.current = candles
-      ;(series as { setData: (d: unknown) => void }).setData(candles)
+      const resizeObserver = new ResizeObserver(() => {
+        if (!chartRef.current) return
 
-      const lastCandle = candles[candles.length - 1]
-      setCurrentCandle(lastCandle)
-
-      const ro = new ResizeObserver(() => {
-        if (chartRef.current && chart) {
-          ;(chart as { applyOptions: (o: unknown) => void }).applyOptions({
-            width: chartRef.current.clientWidth,
-            height: chartRef.current.clientHeight,
-          })
-        }
+        ;(chart as { applyOptions: (options: unknown) => void }).applyOptions({
+          height: chartRef.current.clientHeight,
+          width: chartRef.current.clientWidth,
+        })
       })
-      if (chartRef.current) ro.observe(chartRef.current)
+
+      resizeObserver.observe(chartRef.current)
 
       cleanupFn = () => {
-        ro.disconnect()
+        resizeObserver.disconnect()
         ;(chart as { remove: () => void }).remove()
       }
     }
 
-    init()
+    void init()
 
     return () => {
+      mounted = false
       cleanupFn?.()
     }
   }, [selectedInstrument])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!seriesRef.current || candlesRef.current.length === 0) return
+    if (!seriesRef.current) return
+    if (candles.length === 0) return
 
-      const last = candlesRef.current[candlesRef.current.length - 1]
-      const next = generateNextCandle(last, selectedInstrument)
+    ;(seriesRef.current as { setData: (data: CandleData[]) => void }).setData(candles)
+    setCurrentCandle(candles[candles.length - 1] ?? null)
+  }, [candles])
 
-      const isNewMinute = next.time !== last.time
-      if (isNewMinute) {
-        candlesRef.current = [...candlesRef.current.slice(-200), next]
-      } else {
-        candlesRef.current[candlesRef.current.length - 1] = next
-      }
+  useEffect(() => {
+    if (latestPrice === undefined || previousLastPrice.current === null) {
+      previousLastPrice.current = latestPrice ?? null
+      return
+    }
 
-      ;(seriesRef.current as { update: (d: unknown) => void }).update(next)
-      setCurrentCandle(next)
-      setPriceChange(next.close > last.close ? 'up' : 'down')
-      setTimeout(() => setPriceChange(null), 600)
+    if (latestPrice === previousLastPrice.current) return
 
-      const newPrices = { ...currentPrices, [selectedInstrument]: next.close }
-      updatePrices(newPrices)
-      updateTradePnL()
-    }, 2000)
+    setPriceChange(latestPrice > previousLastPrice.current ? 'up' : 'down')
+    previousLastPrice.current = latestPrice
 
-    return () => clearInterval(interval)
-  }, [selectedInstrument, currentPrices, updatePrices, updateTradePnL])
+    const timeout = window.setTimeout(() => setPriceChange(null), 450)
+    return () => window.clearTimeout(timeout)
+  }, [latestPrice])
 
   useEffect(() => {
     if (!seriesRef.current) return
 
-    const markers = activeTrades
-      .filter((t) => t.instrument === selectedInstrument)
-      .flatMap((trade) => {
-        const candles = candlesRef.current
-        if (candles.length === 0) return []
+    const markers = instrumentTrades.flatMap((trade) => {
+      if (candles.length === 0) return []
 
-        const entryTime = Math.floor(new Date(trade.openTime).getTime() / 1000)
-        const closestCandle = candles.reduce((prev, curr) =>
-          Math.abs(curr.time - entryTime) < Math.abs(prev.time - entryTime) ? curr : prev
-        )
+      const entryTime = Math.floor(new Date(trade.openTime).getTime() / 1000)
+      const closestCandle = candles.reduce((previous, current) =>
+        Math.abs(current.time - entryTime) < Math.abs(previous.time - entryTime) ? current : previous
+      )
 
-        return [
-          {
-            time: closestCandle.time,
-            position: trade.direction === 'BUY' ? 'belowBar' : 'aboveBar',
-            color: trade.direction === 'BUY' ? '#10b981' : '#f43f5e',
-            shape: trade.direction === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: `${trade.direction} @ ${trade.entryPrice}`,
-            size: 1,
-          },
-        ]
-      })
+      return [
+        {
+          color: trade.direction === 'BUY' ? '#1bbf83' : '#ef476f',
+          position: trade.direction === 'BUY' ? 'belowBar' : 'aboveBar',
+          shape: trade.direction === 'BUY' ? 'arrowUp' : 'arrowDown',
+          size: 1,
+          text: `${trade.direction} @ ${formatPrice(trade.entryPrice, pricePrecision)}`,
+          time: closestCandle.time,
+        },
+      ]
+    })
 
-    ;(seriesRef.current as { setMarkers: (m: unknown) => void }).setMarkers(markers)
-    markersRef.current = markers
-  }, [activeTrades, selectedInstrument])
-
-  const formatPrice = (price: number) => {
-    if (selectedInstrument === 'BTCUSD' || selectedInstrument === 'NASDAQ') return price.toFixed(2)
-    if (selectedInstrument === 'XAUUSD') return price.toFixed(2)
-    return price.toFixed(5)
-  }
+    ;(seriesRef.current as { setMarkers: (markers: unknown[]) => void }).setMarkers(markers)
+  }, [candles, instrumentTrades, pricePrecision])
 
   return (
-    <div className="chart-card glass-card flex flex-col h-full min-h-0 overflow-hidden">
-      <div
-        className="chart-header flex items-center justify-between px-5 py-3"
-        style={{ borderBottom: '1px solid rgba(249,168,212,0.2)' }}
-      >
-        <div className="instrument-tabs flex items-center gap-1 flex-wrap">
-          {INSTRUMENTS.map((inst) => (
+    <SurfaceCard className="chart-card" padded={false}>
+      <div className="surface-card-padding">
+        <div className="chart-header">
+          <div className="min-w-0">
+            <span className="eyebrow">Market</span>
+            <h2 className="section-title mt-3 text-[1.05rem]">Live chart</h2>
+            <p className="section-subtitle">Realtime candles from API with websocket updates and polling fallback.</p>
+          </div>
+
+          <div className="min-w-0">
+            {chartState?.isLoading && candles.length === 0 ? (
+              <div className="rounded-[18px] border border-[var(--color-border)] bg-white/76 px-4 py-3">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="mt-3 h-7 w-28" />
+                <div className="mt-3 flex justify-end gap-2">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              </div>
+            ) : currentCandle ? (
+              <div className="rounded-[18px] border border-[var(--color-border)] bg-white/76 px-4 py-3 text-right">
+                <p className="metric-label">{selectedInstrument}</p>
+                <p
+                  className="metric-value mt-1 text-xl font-semibold"
+                  style={{
+                    color:
+                      priceChange === 'up'
+                        ? 'var(--color-success)'
+                        : priceChange === 'down'
+                          ? 'var(--color-danger)'
+                          : 'var(--color-text)',
+                  }}
+                >
+                  {formatPrice(latestPrice ?? currentCandle.close, pricePrecision)}
+                </p>
+                <div className="mt-2 flex flex-wrap justify-end gap-2 text-xs text-[var(--color-text-muted)]">
+                  <span>O {formatPrice(currentCandle.open, pricePrecision)}</span>
+                  <span>H {formatPrice(currentCandle.high, pricePrecision)}</span>
+                  <span>L {formatPrice(currentCandle.low, pricePrecision)}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="chart-toolbar mt-4">
+          {instruments.map((instrument) => (
             <button
-              key={inst}
-              onClick={() => onInstrumentChange(inst)}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200"
-              style={
-                inst === selectedInstrument
-                  ? {
-                      background: 'linear-gradient(135deg, #f472b6, #f43f5e)',
-                      color: 'white',
-                      boxShadow: '0 2px 8px rgba(244,114,182,0.4)',
-                    }
-                  : { color: '#c084ab', background: 'rgba(253,242,248,0.5)' }
-              }
+              key={instrument.symbol}
+              type="button"
+              onClick={() => onInstrumentChange(instrument.symbol)}
+              className={instrument.symbol === selectedInstrument ? 'chip chip-active' : 'chip'}
             >
-              {inst}
+              {instrument.symbol}
             </button>
           ))}
         </div>
-
-        {currentCandle && (
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-xs font-medium mb-0.5" style={{ color: '#c084ab' }}>
-                {selectedInstrument}
-              </p>
-              <p
-                className="text-xl font-bold transition-all duration-300"
-                style={{
-                  color:
-                    priceChange === 'up'
-                      ? '#10b981'
-                      : priceChange === 'down'
-                      ? '#f43f5e'
-                      : '#be185d',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatPrice(currentCandle.close)}
-              </p>
-            </div>
-
-            <div
-              className="hidden md:grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs px-3 py-2 rounded-xl"
-              style={{ background: 'rgba(253,242,248,0.7)' }}
-            >
-              {[
-                { label: 'O', value: formatPrice(currentCandle.open), color: '#c084ab' },
-                { label: 'H', value: formatPrice(currentCandle.high), color: '#10b981' },
-                { label: 'L', value: formatPrice(currentCandle.low), color: '#f43f5e' },
-                { label: 'C', value: formatPrice(currentCandle.close), color: '#be185d' },
-              ].map((item) => (
-                <span key={item.label} style={{ color: item.color }}>
-                  <span className="font-bold">{item.label}</span> {item.value}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      <div ref={chartRef} className="chart-surface flex-1 w-full min-h-0" />
+      {chartState?.error && candles.length === 0 ? (
+        <div className="surface-card-padding pt-0">
+          <InlineMessage
+            actionLabel="Retry"
+            description="Candles could not be loaded from the backend. Check the API response and try again."
+            onAction={() => {
+              void useTradingStore.getState().fetchCandles(selectedInstrument)
+            }}
+            title="Chart unavailable"
+            tone="danger"
+          />
+        </div>
+      ) : null}
 
-      {activeTrades.filter((t) => t.instrument === selectedInstrument).length > 0 && (
-        <div
-          className="chart-trade-legend px-4 py-2 flex gap-3 flex-wrap shrink-0"
-          style={{ borderTop: '1px solid rgba(249,168,212,0.2)' }}
-        >
-          {activeTrades
-            .filter((t) => t.instrument === selectedInstrument)
-            .map((trade) => (
+      {!chartState?.isLoading && !chartState?.error && candles.length === 0 ? (
+        <div className="surface-card-padding pt-0">
+          <InlineMessage
+            description="No candle data is available for this instrument yet."
+            title="No market data"
+          />
+        </div>
+      ) : (
+        <div ref={chartRef} className="chart-surface" />
+      )}
+
+      {instrumentTrades.length > 0 ? (
+        <div className="surface-card-padding pt-0">
+          <div className="chart-trade-legend">
+            {instrumentTrades.map((trade) => (
               <div
                 key={trade.id}
-                className="flex items-center gap-2 text-xs px-3 py-1 rounded-full"
-                style={{
-                  background:
-                    trade.direction === 'BUY'
-                      ? 'rgba(209,250,229,0.7)'
-                      : 'rgba(254,226,226,0.7)',
-                  color: trade.direction === 'BUY' ? '#065f46' : '#991b1b',
-                }}
+                className={trade.direction === 'BUY' ? 'trade-pill trade-pill-buy' : 'trade-pill trade-pill-sell'}
               >
-                <span>{trade.direction} @ {trade.entryPrice}</span>
-                <span className="font-bold">
-                  {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
-                </span>
+                <span>{trade.direction}</span>
+                <span>@ {formatPrice(trade.entryPrice, pricePrecision)}</span>
+                <span>{formatPnL(trade.pnl)}</span>
               </div>
             ))}
+          </div>
         </div>
-      )}
-    </div>
+      ) : null}
+    </SurfaceCard>
   )
 }

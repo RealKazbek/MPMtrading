@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend README
 
-## Getting Started
+## Overview
 
-First, run the development server:
+`front/` contains the Next.js realtime dashboard client.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The frontend:
+
+- loads initial data from the backend REST API
+- connects to the backend WebSocket for live updates
+- keeps production URLs configurable through environment variables
+- builds as a static export for Netlify
+
+## Important Files
+
+- [src/lib/api/client.ts](C:/Users/Kazbek/Desktop/websocket/front/src/lib/api/client.ts)
+- [src/features/trading/realtime.ts](C:/Users/Kazbek/Desktop/websocket/front/src/features/trading/realtime.ts)
+- [next.config.mjs](C:/Users/Kazbek/Desktop/websocket/front/next.config.mjs)
+- [package.json](C:/Users/Kazbek/Desktop/websocket/front/package.json)
+- [../netlify.toml](C:/Users/Kazbek/Desktop/websocket/netlify.toml)
+- [.env.example](C:/Users/Kazbek/Desktop/websocket/front/.env.example)
+
+## Frontend Environment Variables
+
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.onrender.com
+NEXT_PUBLIC_WS_URL=wss://your-backend.onrender.com/ws/trading
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Local example:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8000/ws/trading
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Commands
 
-## Learn More
+```bash
+cd front
+npm install
+npm run dev
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Production Notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Localhost fallback is used only outside production mode
+- Netlify must receive both `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL`
+- Production WebSocket URL must use `wss://`
+- Static export output is written to `front/out`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Realtime Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The client opens `/ws/trading`
+- It sends `SUBSCRIBE` with channels and symbols
+- It handles `HEARTBEAT` and responds with `PONG`
+- It reconnects automatically if the socket closes

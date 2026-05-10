@@ -1,65 +1,89 @@
 'use client'
 
+import { useShallow } from 'zustand/react/shallow'
+import { formatCurrency, formatPercent, formatPnL } from '@/lib/format'
 import { useTradingStore } from '@/store/tradingStore'
+import InlineMessage from '@/components/ui/InlineMessage'
+import Skeleton from '@/components/ui/Skeleton'
+import StatCard from '@/components/ui/StatCard'
 
 export default function TradeStats() {
-  const { balance, activeTrades, tradeHistory } = useTradingStore()
+  const { dashboardState, sessionStats, summary } = useTradingStore(
+    useShallow((state) => ({
+      dashboardState: state.dashboardState,
+      sessionStats: state.sessionStats,
+      summary: state.summary,
+    }))
+  )
 
-  const totalPnL = tradeHistory.reduce((s, t) => s + t.pnl, 0)
-  const wins = tradeHistory.filter((t) => t.result === 'WIN').length
-  const winRate = tradeHistory.length > 0 ? (wins / tradeHistory.length) * 100 : 0
-  const floatingPnL = activeTrades.reduce((s, t) => s + t.pnl, 0)
+  if (dashboardState.isLoading && !summary) {
+    return (
+      <div className="stats-grid">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="surface-card surface-card-padding stat-card">
+            <Skeleton className="h-10 w-10 rounded-[14px]" />
+            <div className="flex-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="mt-3 h-6 w-28" />
+              <Skeleton className="mt-2 h-3 w-32" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
-  const stats = [
-    {
-      label: 'Balance',
-      value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-      icon: 'BAL',
-      color: '#be185d',
-      bg: 'rgba(253,242,248,0.8)',
-    },
-    {
-      label: 'Total PnL',
-      value: `${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`,
-      icon: 'PNL',
-      color: totalPnL >= 0 ? '#10b981' : '#f43f5e',
-      bg: totalPnL >= 0 ? 'rgba(209,250,229,0.5)' : 'rgba(254,226,226,0.5)',
-    },
-    {
-      label: 'Floating PnL',
-      value: `${floatingPnL >= 0 ? '+' : ''}$${floatingPnL.toFixed(2)}`,
-      icon: 'FLT',
-      color: floatingPnL >= 0 ? '#10b981' : '#f43f5e',
-      bg: floatingPnL >= 0 ? 'rgba(209,250,229,0.4)' : 'rgba(254,226,226,0.4)',
-    },
-    {
-      label: 'Win Rate',
-      value: `${winRate.toFixed(1)}%`,
-      icon: 'WIN',
-      color: '#f472b6',
-      bg: 'rgba(253,242,248,0.8)',
-    },
-  ]
+  if (dashboardState.error && !summary) {
+    return (
+      <InlineMessage
+        actionLabel="Retry"
+        description={dashboardState.error}
+        onAction={() => {
+          void useTradingStore.getState().bootstrapDashboard()
+        }}
+        title="Dashboard data unavailable"
+        tone="danger"
+      />
+    )
+  }
+
+  if (!summary || !sessionStats) {
+    return (
+      <InlineMessage
+        description="The backend did not return summary data for this session."
+        title="No summary data"
+      />
+    )
+  }
 
   return (
-    <div className="stats-grid grid grid-cols-4 gap-3">
-      {stats.map((stat, index) => (
-        <div
-          key={stat.label}
-          className="stat-card stat-card-animated flex items-center gap-3"
-          style={{ background: stat.bg, animationDelay: `${index * 70}ms` }}
-        >
-          <span className="stat-token">{stat.icon}</span>
-          <div>
-            <p className="text-xs font-medium mb-0.5" style={{ color: '#c084ab' }}>
-              {stat.label}
-            </p>
-            <p className="text-base font-bold" style={{ color: stat.color, fontVariantNumeric: 'tabular-nums' }}>
-              {stat.value}
-            </p>
-          </div>
-        </div>
-      ))}
+    <div className="stats-grid">
+      <StatCard
+        label="Balance"
+        value={`$${formatCurrency(summary.balance)}`}
+        helper="Current account value"
+        icon="BAL"
+      />
+      <StatCard
+        label="Closed PnL"
+        value={formatPnL(summary.totalPnl)}
+        helper={`${sessionStats.closedTrades} closed trades`}
+        icon="PNL"
+        tone={summary.totalPnl >= 0 ? 'success' : 'danger'}
+      />
+      <StatCard
+        label="Open Exposure"
+        value={formatPnL(summary.floatingPnl)}
+        helper={`${summary.activeTrades} active position${summary.activeTrades === 1 ? '' : 's'}`}
+        icon="FLT"
+        tone={summary.floatingPnl >= 0 ? 'success' : 'danger'}
+      />
+      <StatCard
+        label="Win Rate"
+        value={formatPercent(summary.winRate).replace('+', '')}
+        helper={`${sessionStats.wins} wins tracked by backend`}
+        icon="WIN"
+      />
     </div>
   )
 }

@@ -1,218 +1,205 @@
 'use client'
 
-import { useState } from 'react'
-import { useTradingStore, Instrument, Direction } from '@/store/tradingStore'
-import { INSTRUMENTS } from '@/lib/mockData'
+import { useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { formatPrice } from '@/lib/format'
+import { useTradingStore, type Direction, type Instrument } from '@/store/tradingStore'
+import InlineMessage from '@/components/ui/InlineMessage'
+import FormField from '@/components/ui/FormField'
 
 type Props = {
   selectedInstrument: Instrument
-  onInstrumentChange: (i: Instrument) => void
+  onInstrumentChange: (instrument: Instrument) => void
   onOpened?: () => void
 }
 
-export default function TradeForm({ selectedInstrument, onInstrumentChange, onOpened }: Props) {
-  const { currentPrices, openTrade } = useTradingStore()
-  const currentPrice = currentPrices[selectedInstrument]
+const lotPresets = ['0.01', '0.10', '1.00']
+
+export default function TradeForm({
+  selectedInstrument,
+  onInstrumentChange,
+  onOpened,
+}: Props) {
+  const { currentPrice, instruments, openTrade, tradeActionState } = useTradingStore(
+    useShallow((state) => ({
+      currentPrice: state.currentPrices[selectedInstrument] ?? 0,
+      instruments: state.instruments,
+      openTrade: state.openTrade,
+      tradeActionState: state.tradeActionState,
+    }))
+  )
+
+  const instrumentMeta = useMemo(
+    () => instruments.find((instrument) => instrument.symbol === selectedInstrument),
+    [instruments, selectedInstrument]
+  )
+  const pricePrecision = instrumentMeta?.pricePrecision
 
   const [direction, setDirection] = useState<Direction>('BUY')
   const [entry, setEntry] = useState('')
   const [sl, setSl] = useState('')
   const [tp, setTp] = useState('')
-  const [lot, setLot] = useState('0.1')
+  const [lot, setLot] = useState('0.10')
   const [submitted, setSubmitted] = useState(false)
 
-  const handleOpen = () => {
-    const entryPrice = parseFloat(entry) || currentPrice
-    const stopLoss = parseFloat(sl) || (direction === 'BUY' ? entryPrice * 0.999 : entryPrice * 1.001)
-    const takeProfit = parseFloat(tp) || (direction === 'BUY' ? entryPrice * 1.002 : entryPrice * 0.998)
-    const lotSize = parseFloat(lot) || 0.1
+  const handleOpen = async () => {
+    const entryPrice = Number.parseFloat(entry) || undefined
+    const stopLoss = Number.parseFloat(sl) || undefined
+    const takeProfit = Number.parseFloat(tp) || undefined
+    const lotSize = Number.parseFloat(lot) || instrumentMeta?.minLot || 0.1
 
-    openTrade({
-      instrument: selectedInstrument,
-      direction,
-      entryPrice,
-      stopLoss,
-      takeProfit,
-      lotSize,
-    })
+    try {
+      await openTrade({
+        direction,
+        entryPrice,
+        instrument: selectedInstrument,
+        lotSize,
+        stopLoss,
+        takeProfit,
+      })
 
-    setSubmitted(true)
-    setTimeout(() => setSubmitted(false), 1500)
-    if (onOpened) {
-      setTimeout(onOpened, 450)
+      setSubmitted(true)
+      window.setTimeout(() => setSubmitted(false), 1500)
+      window.setTimeout(() => onOpened?.(), 420)
+      setEntry('')
+      setSl('')
+      setTp('')
+    } catch {
+      setSubmitted(false)
     }
-    setEntry('')
-    setSl('')
-    setTp('')
-  }
-
-  const formatP = (p: number) => {
-    if (selectedInstrument === 'BTCUSD' || selectedInstrument === 'NASDAQ') return p.toFixed(2)
-    if (selectedInstrument === 'XAUUSD') return p.toFixed(2)
-    return p.toFixed(5)
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="block text-xs font-semibold mb-1.5" style={{ color: '#9d174d' }}>
-          Instrument
-        </label>
+      {tradeActionState.error ? (
+        <InlineMessage
+          className="mb-4"
+          description={tradeActionState.error}
+          title="Trade request failed"
+          tone="danger"
+        />
+      ) : null}
+
+      <FormField label="Instrument">
         <select
-          className="input-pink"
+          className="surface-select"
           value={selectedInstrument}
-          onChange={(e) => onInstrumentChange(e.target.value as Instrument)}
+          onChange={(event) => onInstrumentChange(event.target.value as Instrument)}
         >
-          {INSTRUMENTS.map((i) => (
-            <option key={i} value={i}>
-              {i}
+          {instruments.map((instrument) => (
+            <option key={instrument.symbol} value={instrument.symbol}>
+              {instrument.symbol}
             </option>
           ))}
         </select>
-      </div>
+      </FormField>
 
-      <div
-        className="flex items-center justify-between px-3 py-2 rounded-xl"
-        style={{ background: 'rgba(253,242,248,0.8)', border: '1px solid rgba(249,168,212,0.3)' }}
-      >
-        <span className="text-xs font-medium" style={{ color: '#c084ab' }}>
-          Current Price
-        </span>
-        <span className="text-sm font-bold" style={{ color: '#be185d' }}>
-          {formatP(currentPrice)}
-        </span>
+      <div className="rounded-[16px] border border-[var(--color-border)] bg-[var(--color-bg-soft)] px-4 py-3">
+        <p className="metric-label">Current market price</p>
+        <p className="metric-value mt-1 text-lg font-semibold">
+          {currentPrice ? formatPrice(currentPrice, pricePrecision) : '--'}
+        </p>
       </div>
 
       <div>
-        <label className="block text-xs font-semibold mb-1.5" style={{ color: '#9d174d' }}>
-          Direction
-        </label>
+        <span className="field-label">Direction</span>
         <div className="grid grid-cols-2 gap-2">
-          {(['BUY', 'SELL'] as Direction[]).map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDirection(d)}
-              className="py-2.5 rounded-xl text-sm font-bold transition-all duration-200"
-              style={
-                direction === d
-                  ? d === 'BUY'
-                    ? {
-                        background: 'linear-gradient(135deg, #10b981, #059669)',
-                        color: 'white',
-                        boxShadow: '0 4px 12px rgba(16,185,129,0.35)',
-                      }
-                    : {
-                        background: 'linear-gradient(135deg, #f43f5e, #e11d48)',
-                        color: 'white',
-                        boxShadow: '0 4px 12px rgba(244,63,94,0.35)',
-                      }
-                  : {
-                      background: 'rgba(253,242,248,0.6)',
-                      color: d === 'BUY' ? '#10b981' : '#f43f5e',
-                      border: `1.5px solid ${d === 'BUY' ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`,
-                    }
-              }
-            >
-              {d}
-            </button>
-          ))}
+          {(['BUY', 'SELL'] as Direction[]).map((value) => {
+            const active = direction === value
+            const className =
+              value === 'BUY'
+                ? active
+                  ? 'surface-button-success'
+                  : 'surface-button-ghost text-[var(--color-success)]'
+                : active
+                  ? 'surface-button-danger'
+                  : 'surface-button-ghost text-[var(--color-danger)]'
+
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setDirection(value)}
+                className={`${className} w-full`}
+              >
+                {value}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      <div>
-        <label className="block text-xs font-semibold mb-1.5" style={{ color: '#9d174d' }}>
-          Entry Price
-        </label>
+      <FormField label="Entry price">
         <input
-          className="input-pink"
+          className="surface-input"
           type="number"
-          placeholder={`Market (${formatP(currentPrice)})`}
-          value={entry}
-          onChange={(e) => setEntry(e.target.value)}
+          inputMode="decimal"
           step="0.00001"
+          placeholder={currentPrice ? `Market (${formatPrice(currentPrice, pricePrecision)})` : 'Market'}
+          value={entry}
+          onChange={(event) => setEntry(event.target.value)}
         />
-      </div>
+      </FormField>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-xs font-semibold mb-1.5" style={{ color: '#dc2626' }}>
-            Stop Loss
-          </label>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormField label="Stop loss">
           <input
-            className="input-pink"
+            className="surface-input"
             type="number"
+            inputMode="decimal"
+            step="0.00001"
             placeholder="0.00"
             value={sl}
-            onChange={(e) => setSl(e.target.value)}
-            step="0.00001"
+            onChange={(event) => setSl(event.target.value)}
           />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1.5" style={{ color: '#10b981' }}>
-            Take Profit
-          </label>
+        </FormField>
+
+        <FormField label="Take profit">
           <input
-            className="input-pink"
+            className="surface-input"
             type="number"
+            inputMode="decimal"
+            step="0.00001"
             placeholder="0.00"
             value={tp}
-            onChange={(e) => setTp(e.target.value)}
-            step="0.00001"
+            onChange={(event) => setTp(event.target.value)}
           />
-        </div>
+        </FormField>
       </div>
 
-      <div>
-        <label className="block text-xs font-semibold mb-1.5" style={{ color: '#9d174d' }}>
-          Lot Size
-        </label>
-        <div className="flex gap-2">
+      <FormField label="Lot size">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
-            className="input-pink flex-1"
+            className="surface-input flex-1"
             type="number"
+            inputMode="decimal"
+            step={instrumentMeta?.lotStep ?? 0.01}
+            min={instrumentMeta?.minLot ?? 0.01}
             value={lot}
-            onChange={(e) => setLot(e.target.value)}
-            step="0.01"
-            min="0.01"
+            onChange={(event) => setLot(event.target.value)}
           />
-          <div className="flex gap-1">
-            {['0.01', '0.1', '1.0'].map((l) => (
+          <div className="grid grid-cols-3 gap-2 sm:w-auto">
+            {lotPresets.map((preset) => (
               <button
-                key={l}
+                key={preset}
                 type="button"
-                onClick={() => setLot(l)}
-                className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
-                style={
-                  lot === l
-                    ? { background: 'rgba(244,114,182,0.2)', color: '#be185d', border: '1px solid rgba(244,114,182,0.4)' }
-                    : { background: 'rgba(253,242,248,0.7)', color: '#c084ab' }
-                }
+                onClick={() => setLot(preset)}
+                className={lot === preset ? 'chip chip-active' : 'chip'}
               >
-                {l}
+                {preset}
               </button>
             ))}
           </div>
         </div>
-      </div>
+      </FormField>
 
       <button
         type="button"
-        onClick={handleOpen}
-        className="btn-primary w-full text-sm font-bold flex items-center justify-center gap-2"
-        style={{
-          padding: '0.875rem',
-          background:
-            direction === 'BUY'
-              ? 'linear-gradient(135deg, #10b981, #059669)'
-              : 'linear-gradient(135deg, #f43f5e, #e11d48)',
-          boxShadow:
-            direction === 'BUY'
-              ? '0 4px 15px rgba(16,185,129,0.4)'
-              : '0 4px 15px rgba(244,63,94,0.4)',
-        }}
+        onClick={() => void handleOpen()}
+        disabled={tradeActionState.isLoading}
+        className={direction === 'BUY' ? 'surface-button-success w-full' : 'surface-button-danger w-full'}
       >
-        {submitted ? 'Trade Opened!' : `Open ${direction} Trade`}
+        {tradeActionState.isLoading ? 'Submitting...' : submitted ? 'Trade opened' : `Open ${direction} trade`}
       </button>
     </div>
   )

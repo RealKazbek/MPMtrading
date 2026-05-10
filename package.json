@@ -1,0 +1,13 @@
+{
+  "name": "realtime-dashboard-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:front": "cd front && npm run dev",
+    "dev:back": "cd back && python -m daphne -b 0.0.0.0 -p 8000 config.asgi:application",
+    "dev:worker": "cd back && python manage.py run_market_stream",
+    "build": "cd front && npm run build && cd ..\\back && python manage.py check",
+    "lint": "cd front && npm run lint",
+    "test": "node -e \"console.log('No automated tests are configured yet. Use the smoke checklist in DEPLOYMENT_GUIDE.txt.')\""
+  }
+}

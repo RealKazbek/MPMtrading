@@ -1,0 +1,189 @@
+Realtime Dashboard Project Report
+
+1. Introduction
+
+This project was developed for the course "WebSockets Protocol Explained - Master Web Development" as Project 2, titled "Realtime Dashboard". The main idea of the work was to create a web application that demonstrates realtime client-server communication in a way that is close to a real production system. Instead of building a simple static interface or a purely CRUD-based site, the project focuses on dynamic market data, fast UI updates, and a hybrid communication model based on REST API and WebSocket.
+
+The project simulates a trading dashboard. A user opens the frontend, receives the initial data snapshot through REST, and then continues to receive live updates through a persistent WebSocket connection. This allows prices, candles, account summary data, and trade state to change on the screen without full page reloads. Such an approach reflects how modern dashboards, monitoring systems, and trading interfaces work in practice.
+
+2. Project Goal
+
+The goal of the project was to design and prepare a full stack application that:
+
+- displays an initial dashboard state from a backend API
+- updates the interface in realtime through WebSocket events
+- stores all business data in PostgreSQL
+- is ready for cloud deployment
+- includes complete documentation for demonstration and defense
+
+An additional goal was to avoid educational shortcuts that often appear in student projects. For that reason, the project avoids mock runtime data, avoids SQLite, keeps WebSocket architecture intact, and introduces production-oriented configuration for environment variables, health checks, deployment targets, and operational logging.
+
+3. Relevance of WebSocket Technology
+
+WebSocket is highly relevant in modern web development because many systems require immediate server-to-client communication. Traditional polling can be used to update data, but it has several disadvantages. It creates extra network requests, introduces delay between state changes and UI updates, and wastes resources when the data does not change frequently. WebSocket solves this by creating a persistent connection between client and server. Once the connection is established, the server can push events instantly.
+
+This is particularly important for dashboards. A realtime dashboard should reflect new information immediately. In a trading dashboard, delayed prices, stale candles, or slow trade state updates reduce clarity and create a poor user experience. The WebSocket protocol is therefore a good technical choice for demonstrating realtime architecture in this course project.
+
+4. System Architecture
+
+The system uses a hybrid architecture. The frontend is implemented in Next.js and React, while the backend is implemented in Django with Django REST Framework and Django Channels. PostgreSQL is used as the only database, and the project is prepared for Neon as the hosted provider.
+
+The architecture follows a clear separation of responsibilities:
+
+- REST API is responsible for initial data loading and user-triggered actions.
+- WebSocket is responsible for low-latency live updates.
+- PostgreSQL stores users, trades, candles, ticks, and summary-related data.
+- The frontend manages state and visual rendering of market and profile information.
+
+The full flow is as follows:
+
+1. The client requests `GET /api/dashboard/snapshot`.
+2. The client also requests candles, history, and profile data when those pages are opened.
+3. The client opens `WS /ws/trading`.
+4. The client sends a `SUBSCRIBE` message with the required logical channels and symbols.
+5. The backend replays persisted ticks, updates current prices and active trade values, and broadcasts typed events to all subscribed clients.
+6. The frontend updates the UI without page reload.
+7. If the socket disconnects, the frontend falls back to polling until the connection returns.
+
+5. Frontend Part
+
+The frontend is built with Next.js 14, React 18, TypeScript, Zustand, Tailwind CSS, and lightweight-charts. The use of TypeScript is important because both REST and WebSocket communication depend on stable contracts. Typed DTO definitions make it easier to keep frontend and backend synchronized.
+
+Zustand is used as the central store for dashboard state. It stores instruments, active trades, quotes, session statistics, profile data, chart candles, and connection state. This makes the project easy to reason about because realtime updates from WebSocket and synchronous updates from REST are normalized into the same store.
+
+An important frontend feature is connection awareness. The UI does not just assume that the socket always works. Instead, it displays `LIVE`, `CONNECTING`, or `OFFLINE`. When the socket is unavailable, the store activates polling fallback for critical data. This improves resilience and makes the dashboard behavior easier to explain during the project defense.
+
+The chart component receives initial candle history from REST and then appends or replaces candles in realtime as `CANDLE_UPDATE` events arrive. This reflects a realistic market-data visualization pipeline.
+
+6. Backend Part
+
+The backend is built with Django, Django REST Framework, Django Channels, and Daphne. Django REST Framework is used to expose structured JSON endpoints. Channels extends Django with asynchronous WebSocket support, which is essential for realtime messaging.
+
+The backend is organized into several layers:
+
+- `models.py` contains the PostgreSQL data model.
+- `api/` contains endpoint definitions, serializers, exception formatting, and API middleware.
+- `services/` contains business logic for dashboard snapshots, market replay, profile statistics, and trade lifecycle.
+- `realtime/` contains websocket routing, consumer logic, protocol groups, broadcast helpers, and market stream support.
+
+This service-oriented layout makes the project easier to maintain and more professional than putting all logic directly into views or consumers.
+
+The backend also includes:
+
+- `GET /api/health` for runtime health checks
+- structured logging for API and WebSocket activity
+- production-safe environment variable parsing
+- graceful shutdown behavior for the integrated market stream
+
+7. PostgreSQL and Neon Database
+
+The project uses PostgreSQL only. SQLite was intentionally removed because it is not appropriate for a deployed realtime dashboard. PostgreSQL supports stronger concurrency guarantees, better deployment compatibility, and a more realistic production setup.
+
+The database schema includes the following entities:
+
+- users
+- instruments
+- active trades
+- trade history
+- candles
+- price ticks
+- trading sessions
+- websocket connections
+- dashboard snapshots
+
+Several design decisions were made for correctness:
+
+- UUID is used as the primary key for main entities.
+- Monetary and price fields use decimal types instead of floating-point types.
+- Timestamps are stored in UTC.
+- Lookup-heavy tables use indexes.
+
+The backend accepts a standard `DATABASE_URL`, which makes it compatible with Neon. The example configuration uses `sslmode=require`, which is important for cloud-hosted PostgreSQL connections.
+
+8. REST API
+
+The REST API plays the role of the initial state provider and mutation interface. The main endpoints are:
+
+- `GET /api/dashboard/snapshot`
+- `GET /api/markets/:symbol/candles`
+- `GET /api/trades/history`
+- `GET /api/profile`
+- `POST /api/trades`
+- `POST /api/trades/:tradeId/close`
+- `GET /api/health`
+
+The API returns decimal values as strings. This is a deliberate decision. It prevents loss of precision and keeps contracts predictable between Python, PostgreSQL, and JavaScript. Timestamps are returned in ISO 8601 UTC format, which is also important for a clean cross-platform contract.
+
+Trade mutations update the database first and then return a refreshed summary payload. This allows the frontend to remain consistent even before the next WebSocket event arrives.
+
+9. WebSocket Protocol
+
+The WebSocket endpoint is `/ws/trading`. After connecting, the client sends a `SUBSCRIBE` message containing logical channels and specific symbols. The available event types include:
+
+- `PRICE_TICK`
+- `CANDLE_UPDATE`
+- `BALANCE_UPDATE`
+- `TRADE_STATUS_UPDATE`
+- `SESSION_STATS_UPDATE`
+- `HEARTBEAT`
+- `ERROR`
+
+The server periodically sends `HEARTBEAT`, and the client replies with `PONG`. This helps keep the connection active and provides a simple heartbeat mechanism for connection tracking.
+
+The consumer stores connection metadata in the database, including subscribed channels, subscribed symbols, heartbeat timestamps, and connection status. This adds observability and makes the project stronger from an architectural perspective.
+
+10. Realtime Data Flow
+
+The realtime data flow is based on persisted `price_ticks`. Instead of generating random updates in memory, the project stores deterministic tick data in PostgreSQL. A replay loop reads the next available tick, applies it to the current instrument state, updates active trade prices, and broadcasts changes.
+
+This flow has several advantages:
+
+- it avoids random mock behavior
+- it keeps the data reproducible
+- it aligns the chart with current prices
+- it makes the backend logic easier to explain during defense
+
+When a tick is replayed:
+
+1. The instrument current bid, ask, and last values are updated.
+2. Active trades linked to the instrument get updated current prices.
+3. A `PRICE_TICK` event is broadcast.
+4. If a corresponding candle exists, `CANDLE_UPDATE` is broadcast.
+5. The backend recalculates and broadcasts balance and session statistics.
+
+This creates a realistic event chain where one market update affects several parts of the UI.
+
+11. Testing
+
+Testing in this project is currently focused on build validation, framework checks, and smoke verification. The frontend production build passes successfully, and linting completes without errors. The backend passes `python manage.py check`. Full migration application requires a reachable PostgreSQL instance, which is expected because the project intentionally does not fall back to SQLite.
+
+The smoke checklist includes:
+
+- health endpoint returns success
+- database connection works
+- snapshot endpoint returns data
+- candle endpoint returns chart data
+- frontend opens correctly
+- websocket connects
+- live prices update without reload
+- trade open works
+- trade close works
+- history updates correctly
+- profile page loads consistent values
+- mobile layout remains stable
+
+This checklist is suitable for both local verification and the final demo before defense.
+
+12. Deployment
+
+The backend is prepared for Render. The repository now includes `render.yaml` and `Procfile`. The ASGI application is started with Daphne, and a health check endpoint is exposed at `/api/health`. Environment variables were normalized for production use, including database, origin, websocket, and logging settings.
+
+The frontend is prepared for Netlify. The repository now includes `netlify.toml`. The frontend is exported as a static site, which makes it suitable for Netlify hosting. Production environment variables use `https://` for the API and `wss://` for the websocket endpoint.
+
+One additional deployment improvement was made for Render: the backend can autostart the market replay loop inside the web process through `MARKET_STREAM_AUTOSTART=true`. This allows the project to work on a single Render service without introducing mandatory Redis infrastructure. At the same time, the project still supports Redis later if horizontal scaling is needed.
+
+13. Conclusion
+
+The final result is a full stack educational project that demonstrates a practical realtime architecture. It combines REST and WebSocket in a clear and technically justified way. The backend is structured, PostgreSQL-based, and deployable. The frontend is typed, resilient to socket failure, and suitable for static deployment. The repository now also includes documentation for launch, deployment, API contracts, report preparation, and presentation defense.
+
+From an academic perspective, the project satisfies the key requirement of demonstrating WebSocket communication in a meaningful user interface. From an engineering perspective, it also introduces production-oriented decisions such as decimal-based money handling, UUID identifiers, UTC timestamps, health checks, deployment configuration, and secure environment variable handling. This makes the project stronger both as a course assignment and as a portfolio-quality example of realtime web development.

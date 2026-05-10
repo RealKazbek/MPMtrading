@@ -1,0 +1,70 @@
+Presentation Script for Project Defense
+
+Slide 1 - Title and project theme
+
+"Hello. Our project is called Realtime Dashboard. It was completed for the course 'WebSockets Protocol Explained - Master Web Development'. The goal of the project was to build a dashboard where the client receives initial data through REST API and then continues receiving live updates through WebSocket without reloading the page."
+
+Slide 2 - Why this topic is relevant
+
+"This topic is актуален because many modern systems need realtime communication. Examples are trading terminals, delivery tracking, chats, monitoring systems, and collaborative applications. Traditional polling creates extra delay and unnecessary requests, while WebSocket keeps a persistent connection and allows the server to push updates immediately."
+
+Slide 3 - Technology stack
+
+"On the frontend we used Next.js, React, TypeScript, Zustand, Tailwind CSS, and lightweight-charts. On the backend we used Django, Django REST Framework, Django Channels, and Daphne. As a database we used PostgreSQL, deployed through Neon. For deployment we prepared Render for the backend and Netlify for the frontend."
+
+Slide 4 - System architecture
+
+"The architecture is hybrid. First, the frontend requests the initial dashboard state using REST endpoints. This includes snapshot data, candle history, profile data, and trade history. After that, the client opens a WebSocket connection to '/ws/trading'. Live updates such as prices, candles, balances, session statistics, and trade status changes are pushed from the server in realtime."
+
+Slide 5 - Database and Neon
+
+"We use PostgreSQL only. All main entities are stored in the database: users, instruments, candles, price ticks, active trades, trade history, sessions, websocket connections, and dashboard snapshots. Primary keys are UUID. Monetary values use decimal fields to avoid floating point errors. Timestamps are stored in UTC. Neon is a good choice for this project because it provides hosted PostgreSQL and is compatible with standard DATABASE_URL configuration."
+
+Slide 6 - REST API
+
+"REST is used for initial loading and explicit actions. Important endpoints are: dashboard snapshot, candles by symbol, trade history, profile, open trade, close trade, and healthcheck. REST gives us predictable request-response operations and is a good match for bootstrapping the interface and performing trade mutations."
+
+Slide 7 - WebSocket protocol
+
+"WebSocket is used after the initial page load. The client subscribes to channels and symbols with a SUBSCRIBE message. The server sends events such as PRICE_TICK, CANDLE_UPDATE, BALANCE_UPDATE, TRADE_STATUS_UPDATE, SESSION_STATS_UPDATE, and HEARTBEAT. The client answers HEARTBEAT with PONG. This keeps the connection active and allows us to track connection state."
+
+Slide 8 - Live data flow
+
+"The backend stores deterministic price ticks in PostgreSQL. A replay loop reads those ticks, updates the current instrument price, refreshes active trade PnL, and broadcasts typed events to connected clients. That means the chart, stats, and trade information update live without a page refresh."
+
+Slide 9 - Deployment
+
+"For deployment we prepared the backend for Render and the frontend for Netlify. The backend runs as an ASGI application through Daphne and exposes a healthcheck endpoint '/api/health'. The frontend is exported as a static site and deployed to Netlify. In production the API uses HTTPS and the websocket uses secure WSS."
+
+Slide 10 - Demo
+
+"Now I will demonstrate the project. First I open the dashboard. The snapshot loads over REST. Then the websocket connects and the status changes to LIVE. We can see live prices and chart candle updates. Next, I open a trade. The dashboard updates immediately. Then I close the trade, and the closed trade appears in history without reloading the page. Finally, I open the profile page to show that the statistics remain consistent."
+
+How to explain REST + WebSocket clearly
+
+"REST and WebSocket solve different tasks. REST is useful for initial state and direct user actions because it is request-response and easy to cache and debug. WebSocket is useful for frequent live updates because the server can push data instantly. In our project they work together: REST bootstraps the UI, WebSocket keeps it live."
+
+How to explain Neon / PostgreSQL
+
+"We selected PostgreSQL because it is a production-ready relational database and much more appropriate than SQLite for a deployed project. Neon gives us managed PostgreSQL in the cloud, so our Django backend can connect through a standard DATABASE_URL with SSL enabled."
+
+How to explain Render / Netlify
+
+"Render is suitable for the backend because it can run the ASGI server, expose the API, and keep the WebSocket endpoint available over HTTPS and WSS. Netlify is suitable for the frontend because the Next.js client is exported as a static site and can be deployed quickly with environment variables for the API and WebSocket URLs."
+
+Possible teacher questions and answers
+
+Question: Why did you use both REST and WebSocket?
+Answer: REST is best for initial loading and explicit actions, while WebSocket is best for live updates. Using both gives better architecture than forcing everything through one protocol.
+
+Question: Why PostgreSQL and not SQLite?
+Answer: PostgreSQL is production-ready, supports better concurrency, and is the correct choice for cloud deployment. SQLite is not suitable here for a deployed realtime dashboard.
+
+Question: How do you handle websocket disconnects?
+Answer: The frontend tracks connection status as LIVE, CONNECTING, or OFFLINE. It reconnects automatically and activates polling fallback while the socket is unavailable.
+
+Question: How do you avoid precision errors in prices and money?
+Answer: On the backend we use decimal fields in PostgreSQL and serialize numeric values as strings in API and WebSocket contracts.
+
+Question: What happens if the backend scales to multiple processes?
+Answer: For single-instance Render deployment the current setup works using the in-memory channel layer and stream autostart. For horizontal scaling, Redis should be added as the shared Channels layer.

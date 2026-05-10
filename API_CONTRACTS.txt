@@ -1,0 +1,353 @@
+Realtime Dashboard API Contracts
+
+1. REST ENDPOINTS
+
+GET /api/health
+
+Response 200:
+{
+  "database": {
+    "connected": true
+  },
+  "environment": "production",
+  "status": "ok",
+  "websocket": {
+    "channelLayer": "inmemory",
+    "endpoint": "/ws/trading",
+    "marketStreamAutostart": true
+  }
+}
+
+Response 503:
+{
+  "database": {
+    "connected": false,
+    "error": "connection timeout expired"
+  },
+  "environment": "production",
+  "status": "degraded",
+  "websocket": {
+    "channelLayer": "inmemory",
+    "endpoint": "/ws/trading",
+    "marketStreamAutostart": true
+  }
+}
+
+GET /api/dashboard/snapshot
+
+Response 200:
+{
+  "activeTrades": [
+    {
+      "currentPrice": "3144.50000000",
+      "direction": "BUY",
+      "entryPrice": "3131.60000000",
+      "id": "e8f10fe2-4728-4f51-b7f6-f6a2114a65d1",
+      "lotSize": "1.5000",
+      "openTime": "2026-05-10T10:38:00+00:00",
+      "pnl": "19.35000000",
+      "pnlPercent": "0.4119",
+      "stopLoss": "3118.00000000",
+      "symbol": "ETHUSD",
+      "takeProfit": "3158.00000000"
+    }
+  ],
+  "instruments": [
+    {
+      "displayName": "Bitcoin / US Dollar",
+      "lotStep": "0.0100",
+      "minLot": "0.0100",
+      "pricePrecision": 2,
+      "quantityPrecision": 4,
+      "quoteCurrency": "USD",
+      "symbol": "BTCUSD"
+    }
+  ],
+  "quotes": [
+    {
+      "ask": "64543.10000000",
+      "bid": "64542.70000000",
+      "last": "64542.90000000",
+      "symbol": "BTCUSD",
+      "timestamp": "2026-05-10T10:11:00+00:00"
+    }
+  ],
+  "sessionStats": {
+    "activeTrades": 1,
+    "closedTrades": 4,
+    "floatingPnl": "19.35000000",
+    "wins": 3
+  },
+  "summary": {
+    "activeTrades": 1,
+    "balance": "12684.42000000",
+    "equity": "12703.77000000",
+    "floatingPnl": "19.35000000",
+    "totalPnl": "2765.25500000",
+    "winRate": 75.0
+  }
+}
+
+GET /api/markets/:symbol/candles?timeframe=1m
+
+Example request:
+GET /api/markets/BTCUSD/candles?timeframe=1m
+
+Response 200:
+{
+  "candles": [
+    {
+      "close": "64250.20000000",
+      "high": "64250.85000000",
+      "low": "64248.20000000",
+      "open": "64249.00000000",
+      "timestamp": "2026-05-10T10:00:00+00:00",
+      "volume": "126.50000000"
+    }
+  ],
+  "symbol": "BTCUSD",
+  "timeframe": "1m"
+}
+
+GET /api/trades/history
+
+Response 200:
+{
+  "trades": [
+    {
+      "closeTime": "2026-05-10T08:38:00+00:00",
+      "direction": "BUY",
+      "entryPrice": "64310.80000000",
+      "exitPrice": "64518.30000000",
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "lotSize": "0.1000",
+      "openTime": "2026-05-10T08:00:00+00:00",
+      "pnl": "20.75000000",
+      "pnlPercent": "3.2265",
+      "result": "WIN",
+      "stopLoss": "64190.00000000",
+      "symbol": "BTCUSD",
+      "takeProfit": "64520.00000000"
+    }
+  ]
+}
+
+GET /api/profile
+
+Response 200:
+{
+  "achievements": [
+    {
+      "description": "Closed at least one profitable trade.",
+      "earned": true,
+      "id": "first-win",
+      "label": "First Winning Trade"
+    }
+  ],
+  "profile": {
+    "email": "trader@realtimedesk.dev",
+    "memberSince": "2026-05-10",
+    "name": "Realtime Demo Trader",
+    "tier": "Professional"
+  },
+  "settings": [
+    {
+      "label": "Execution mode",
+      "value": "Paper Trading"
+    }
+  ],
+  "stats": {
+    "activeTrades": 1,
+    "averageLoss": "-2.96000000",
+    "averageWin": "27.98166667",
+    "balance": "12684.42000000",
+    "profitFactor": "28.36",
+    "totalPnl": "2765.25500000",
+    "totalTrades": 4,
+    "winRate": 75.0
+  }
+}
+
+POST /api/trades
+
+Request:
+{
+  "direction": "BUY",
+  "symbol": "BTCUSD",
+  "lotSize": "0.1500",
+  "stopLoss": "64320.00000000",
+  "takeProfit": "64720.00000000"
+}
+
+Response 201:
+{
+  "activeTrade": {
+    "currentPrice": "64542.90000000",
+    "direction": "BUY",
+    "entryPrice": "64543.10000000",
+    "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "lotSize": "0.1500",
+    "openTime": "2026-05-10T12:00:00+00:00",
+    "pnl": "-0.03000000",
+    "pnlPercent": "-0.0031",
+    "stopLoss": "64320.00000000",
+    "symbol": "BTCUSD",
+    "takeProfit": "64720.00000000"
+  },
+  "message": "Trade opened successfully.",
+  "quotes": [],
+  "sessionStats": {},
+  "summary": {}
+}
+
+POST /api/trades/:tradeId/close
+
+Example request:
+POST /api/trades/e8f10fe2-4728-4f51-b7f6-f6a2114a65d1/close
+
+Response 200:
+{
+  "closedTrade": {
+    "closeTime": "2026-05-10T12:05:00+00:00",
+    "direction": "BUY",
+    "entryPrice": "3131.60000000",
+    "exitPrice": "3144.30000000",
+    "id": "e8f10fe2-4728-4f51-b7f6-f6a2114a65d1",
+    "lotSize": "1.5000",
+    "openTime": "2026-05-10T10:38:00+00:00",
+    "pnl": "19.05000000",
+    "pnlPercent": "0.4055",
+    "result": "WIN",
+    "stopLoss": "3118.00000000",
+    "symbol": "ETHUSD",
+    "takeProfit": "3158.00000000"
+  },
+  "message": "Trade closed successfully.",
+  "quotes": [],
+  "sessionStats": {},
+  "summary": {}
+}
+
+2. WEBSOCKET ENDPOINT
+
+WS /ws/trading
+
+Client message: SUBSCRIBE
+{
+  "type": "SUBSCRIBE",
+  "channels": ["balance", "prices", "candles", "trades", "sessionStats"],
+  "symbols": ["BTCUSD", "ETHUSD"]
+}
+
+Client message: UNSUBSCRIBE
+{
+  "type": "UNSUBSCRIBE",
+  "channels": ["candles"],
+  "symbols": ["BTCUSD"]
+}
+
+Client message: PONG
+{
+  "type": "PONG",
+  "timestamp": "2026-05-10T12:00:00Z"
+}
+
+Server event: HEARTBEAT
+{
+  "type": "HEARTBEAT",
+  "timestamp": "2026-05-10T12:00:00+00:00"
+}
+
+Server event: PRICE_TICK
+{
+  "type": "PRICE_TICK",
+  "symbol": "ETHUSD",
+  "bid": "3144.30000000",
+  "ask": "3144.70000000",
+  "last": "3144.50000000",
+  "timestamp": "2026-05-10T10:11:00+00:00"
+}
+
+Server event: CANDLE_UPDATE
+{
+  "type": "CANDLE_UPDATE",
+  "symbol": "ETHUSD",
+  "timeframe": "1m",
+  "candle": {
+    "open": "3141.85000000",
+    "high": "3145.35000000",
+    "low": "3141.05000000",
+    "close": "3144.50000000",
+    "timestamp": "2026-05-10T10:11:00+00:00",
+    "volume": "137.50000000"
+  }
+}
+
+Server event: BALANCE_UPDATE
+{
+  "type": "BALANCE_UPDATE",
+  "balance": "12684.42000000",
+  "equity": "12703.77000000",
+  "floatingPnl": "19.35000000",
+  "totalPnl": "2765.25500000",
+  "winRate": 75.0
+}
+
+Server event: TRADE_STATUS_UPDATE
+{
+  "type": "TRADE_STATUS_UPDATE",
+  "tradeStatus": "OPENED",
+  "trade": {
+    "currentPrice": "64542.90000000",
+    "direction": "BUY",
+    "entryPrice": "64543.10000000",
+    "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "lotSize": "0.1500",
+    "openTime": "2026-05-10T12:00:00+00:00",
+    "pnl": "-0.03000000",
+    "pnlPercent": "-0.0031",
+    "stopLoss": "64320.00000000",
+    "symbol": "BTCUSD",
+    "takeProfit": "64720.00000000"
+  }
+}
+
+Server event: SESSION_STATS_UPDATE
+{
+  "type": "SESSION_STATS_UPDATE",
+  "sessionStats": {
+    "activeTrades": 2,
+    "closedTrades": 4,
+    "floatingPnl": "19.32000000",
+    "wins": 3
+  }
+}
+
+Server event: ERROR
+{
+  "type": "ERROR",
+  "error": {
+    "code": "INVALID_JSON",
+    "message": "Unable to deserialize WebSocket payload."
+  }
+}
+
+3. ERROR FORMAT
+
+REST error format:
+{
+  "code": "request_error",
+  "details": {
+    "detail": "Not found."
+  },
+  "message": "Not found."
+}
+
+Validation error format:
+{
+  "code": "invalid",
+  "details": {
+    "lotSize": ["lotSize must be positive."]
+  },
+  "message": "Validation failed."
+}

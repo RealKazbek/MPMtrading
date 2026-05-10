@@ -1,165 +1,554 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createTrade, closeTrade as closeTradeRequest, getCandles, getDashboardSnapshot, getProfile, getTradeHistory } from '@/src/features/trading/api'
+import {
+  normalizeAchievement,
+  normalizeCandle,
+  normalizeClosedTrade,
+  normalizeInstrument,
+  normalizeProfile,
+  normalizeProfileSetting,
+  normalizeProfileStats,
+  normalizeQuote,
+  normalizeSessionStats,
+  normalizeSummary,
+  normalizeTrade,
+} from '@/src/features/trading/normalizers'
+import { TradingWebSocketClient } from '@/src/features/trading/realtime'
+import type {
+  ConnectionStatus,
+  TradingServerMessage,
+} from '@/src/lib/api/types'
 
 export type Direction = 'BUY' | 'SELL'
-export type Instrument = 'EURUSD' | 'GBPUSD' | 'XAUUSD' | 'BTCUSD' | 'NASDAQ'
+export type Instrument = string
+
+export interface CandleData {
+  close: number
+  high: number
+  low: number
+  open: number
+  time: number
+}
+
+export interface Quote {
+  ask: number
+  bid: number
+  last: number
+  symbol: string
+  timestamp: string
+}
+
+export interface InstrumentMeta {
+  displayName: string
+  lotStep: number
+  minLot: number
+  pricePrecision: number
+  quantityPrecision: number
+  quoteCurrency: string
+  symbol: string
+}
 
 export interface Trade {
-  id: string
-  instrument: Instrument
+  currentPrice: number
   direction: Direction
   entryPrice: number
-  stopLoss: number
-  takeProfit: number
+  id: string
+  instrument: Instrument
   lotSize: number
   openTime: string
   pnl: number
   pnlPercent: number
+  stopLoss: number
+  takeProfit: number
 }
 
 export interface ClosedTrade extends Trade {
-  exitPrice: number
   closeTime: string
+  exitPrice: number
   result: 'WIN' | 'LOSS'
 }
 
-interface TradingState {
+export interface Summary {
+  activeTrades: number
   balance: number
+  equity: number
+  floatingPnl: number
+  totalPnl: number
+  winRate: number
+}
+
+export interface SessionStats {
+  activeTrades: number
+  closedTrades: number
+  floatingPnl: number
+  wins: number
+}
+
+export interface Profile {
+  email: string
+  memberSince: string
+  name: string
+  tier: string
+}
+
+export interface ProfileStats {
+  activeTrades: number
+  averageLoss: number
+  averageWin: number
+  balance: number
+  profitFactor: string
+  totalPnl: number
+  totalTrades: number
+  winRate: number
+}
+
+export interface Achievement {
+  description: string
+  earned: boolean
+  id: string
+  label: string
+}
+
+export interface ProfileSetting {
+  label: string
+  value: string
+}
+
+export interface ResourceState {
+  error: null | string
+  isLoading: boolean
+  lastLoadedAt: null | number
+}
+
+interface TradingState {
+  achievements: Achievement[]
   activeTrades: Trade[]
+  candlesBySymbol: Record<string, CandleData[]>
+  chartStates: Record<string, ResourceState>
+  connectionStatus: ConnectionStatus
+  currentPrices: Record<string, number>
+  dashboardState: ResourceState
+  historyState: ResourceState
+  instruments: InstrumentMeta[]
+  profile: null | Profile
+  profileSettings: ProfileSetting[]
+  profileState: ResourceState
+  profileStats: null | ProfileStats
+  quotes: Record<string, Quote>
+  sessionStats: null | SessionStats
+  summary: null | Summary
+  tradeActionState: ResourceState
   tradeHistory: ClosedTrade[]
-  currentPrices: Record<Instrument, number>
-  prevBalance: number
 
-  setBalance: (balance: number) => void
-  openTrade: (trade: Omit<Trade, 'id' | 'openTime' | 'pnl' | 'pnlPercent'>) => void
-  closeTrade: (tradeId: string, currentPrice: number) => void
-  updatePrices: (prices: Record<Instrument, number>) => void
-  updateTradePnL: () => void
+  bootstrapDashboard: (options?: { silent?: boolean }) => Promise<void>
+  closeTrade: (tradeId: string) => Promise<void>
+  connectRealtime: () => () => void
+  fetchCandles: (symbol: string, options?: { silent?: boolean }) => Promise<void>
+  loadHistory: () => Promise<void>
+  loadProfile: () => Promise<void>
+  openTrade: (payload: {
+    direction: Direction
+    entryPrice?: number
+    instrument: Instrument
+    lotSize: number
+    stopLoss?: number
+    takeProfit?: number
+  }) => Promise<void>
+  startPolling: (symbol: string) => () => void
+  subscribeSymbol: (symbol: string) => void
 }
 
-const INITIAL_PRICES: Record<Instrument, number> = {
-  EURUSD: 1.0842,
-  GBPUSD: 1.2651,
-  XAUUSD: 2341.50,
-  BTCUSD: 67430.00,
-  NASDAQ: 19845.30,
+const createResourceState = (): ResourceState => ({
+  error: null,
+  isLoading: false,
+  lastLoadedAt: null,
+})
+
+let realtimeClient: TradingWebSocketClient | null = null
+let pollingTimer: ReturnType<typeof setInterval> | null = null
+
+function patchResourceState(current: ResourceState, patch: Partial<ResourceState>): ResourceState {
+  return { ...current, ...patch }
 }
 
-const INITIAL_HISTORY: ClosedTrade[] = [
-  {
-    id: 'h1', instrument: 'EURUSD', direction: 'BUY',
-    entryPrice: 1.0810, exitPrice: 1.0855, stopLoss: 1.0790, takeProfit: 1.0870,
-    lotSize: 1.0, openTime: '2025-01-15T09:30:00', closeTime: '2025-01-15T14:22:00',
-    pnl: 450, pnlPercent: 4.5, result: 'WIN',
-  },
-  {
-    id: 'h2', instrument: 'XAUUSD', direction: 'SELL',
-    entryPrice: 2360.00, exitPrice: 2380.00, stopLoss: 2375.00, takeProfit: 2330.00,
-    lotSize: 0.5, openTime: '2025-01-14T11:00:00', closeTime: '2025-01-14T16:45:00',
-    pnl: -200, pnlPercent: -2.0, result: 'LOSS',
-  },
-  {
-    id: 'h3', instrument: 'BTCUSD', direction: 'BUY',
-    entryPrice: 65000, exitPrice: 67200, stopLoss: 64000, takeProfit: 68000,
-    lotSize: 0.2, openTime: '2025-01-13T08:00:00', closeTime: '2025-01-13T20:00:00',
-    pnl: 880, pnlPercent: 8.8, result: 'WIN',
-  },
-  {
-    id: 'h4', instrument: 'GBPUSD', direction: 'SELL',
-    entryPrice: 1.2700, exitPrice: 1.2640, stopLoss: 1.2740, takeProfit: 1.2630,
-    lotSize: 1.5, openTime: '2025-01-12T10:15:00', closeTime: '2025-01-12T15:30:00',
-    pnl: 360, pnlPercent: 3.6, result: 'WIN',
-  },
-  {
-    id: 'h5', instrument: 'NASDAQ', direction: 'BUY',
-    entryPrice: 19600, exitPrice: 19500, stopLoss: 19400, takeProfit: 19900,
-    lotSize: 0.3, openTime: '2025-01-11T14:00:00', closeTime: '2025-01-11T18:00:00',
-    pnl: -150, pnlPercent: -1.5, result: 'LOSS',
-  },
-]
+export const useTradingStore = create<TradingState>()((set, get) => ({
+  achievements: [],
+  activeTrades: [],
+  candlesBySymbol: {},
+  chartStates: {},
+  connectionStatus: 'OFFLINE',
+  currentPrices: {},
+  dashboardState: createResourceState(),
+  historyState: createResourceState(),
+  instruments: [],
+  profile: null,
+  profileSettings: [],
+  profileState: createResourceState(),
+  profileStats: null,
+  quotes: {},
+  sessionStats: null,
+  summary: null,
+  tradeActionState: createResourceState(),
+  tradeHistory: [],
 
-export const useTradingStore = create<TradingState>()(
-  persist(
-    (set, get) => ({
-      balance: 10000,
-      prevBalance: 10000,
-      activeTrades: [],
-      tradeHistory: INITIAL_HISTORY,
-      currentPrices: INITIAL_PRICES,
-
-      setBalance: (balance) => set((s) => ({ prevBalance: s.balance, balance })),
-
-      openTrade: (tradeData) => {
-        const trade: Trade = {
-          ...tradeData,
-          id: `t_${Date.now()}`,
-          openTime: new Date().toISOString(),
-          pnl: 0,
-          pnlPercent: 0,
-        }
-        set((s) => ({ activeTrades: [...s.activeTrades, trade] }))
-      },
-
-      closeTrade: (tradeId, currentPrice) => {
-        const { activeTrades, balance } = get()
-        const trade = activeTrades.find((t) => t.id === tradeId)
-        if (!trade) return
-
-        const pnl =
-          trade.direction === 'BUY'
-            ? (currentPrice - trade.entryPrice) * trade.lotSize * 100
-            : (trade.entryPrice - currentPrice) * trade.lotSize * 100
-
-        const pnlPercent = (pnl / balance) * 100
-
-        const closed: ClosedTrade = {
-          ...trade,
-          exitPrice: currentPrice,
-          closeTime: new Date().toISOString(),
-          pnl: Math.round(pnl * 100) / 100,
-          pnlPercent: Math.round(pnlPercent * 100) / 100,
-          result: pnl >= 0 ? 'WIN' : 'LOSS',
-        }
-
-        const newBalance = Math.round((balance + pnl) * 100) / 100
-
-        set((s) => ({
-          activeTrades: s.activeTrades.filter((t) => t.id !== tradeId),
-          tradeHistory: [closed, ...s.tradeHistory],
-          prevBalance: s.balance,
-          balance: newBalance,
-        }))
-      },
-
-      updatePrices: (prices) => set({ currentPrices: prices }),
-
-      updateTradePnL: () => {
-        const { activeTrades, currentPrices } = get()
-        if (activeTrades.length === 0) return
-
-        const updated = activeTrades.map((trade) => {
-          const current = currentPrices[trade.instrument]
-          const pnl =
-            trade.direction === 'BUY'
-              ? (current - trade.entryPrice) * trade.lotSize * 100
-              : (trade.entryPrice - current) * trade.lotSize * 100
-          const pnlPercent = (pnl / 10000) * 100
-          return {
-            ...trade,
-            pnl: Math.round(pnl * 100) / 100,
-            pnlPercent: Math.round(pnlPercent * 100) / 100,
-          }
-        })
-        set({ activeTrades: updated })
-      },
-    }),
-    {
-      name: 'trading-store',
-      partialize: (s) => ({
-        balance: s.balance,
-        tradeHistory: s.tradeHistory,
-        activeTrades: s.activeTrades,
-      }),
+  bootstrapDashboard: async (options) => {
+    if (!options?.silent) {
+      set((state) => ({
+        dashboardState: patchResourceState(state.dashboardState, {
+          error: null,
+          isLoading: true,
+        }),
+      }))
     }
-  )
-)
+
+    try {
+      const response = await getDashboardSnapshot()
+      const instruments = response.instruments.map(normalizeInstrument)
+      const quotes = response.quotes.map(normalizeQuote)
+      const currentPrices = Object.fromEntries(quotes.map((quote) => [quote.symbol, quote.last]))
+
+      set((state) => ({
+        activeTrades: response.activeTrades.map(normalizeTrade),
+        currentPrices,
+        dashboardState: patchResourceState(state.dashboardState, {
+          error: null,
+          isLoading: false,
+          lastLoadedAt: Date.now(),
+        }),
+        instruments,
+        quotes: Object.fromEntries(quotes.map((quote) => [quote.symbol, quote])),
+        sessionStats: normalizeSessionStats(response.sessionStats),
+        summary: normalizeSummary(response.summary),
+      }))
+    } catch (error) {
+      set((state) => ({
+        dashboardState: patchResourceState(state.dashboardState, {
+          error: error instanceof Error ? error.message : 'Failed to load dashboard',
+          isLoading: false,
+        }),
+      }))
+    }
+  },
+
+  loadHistory: async () => {
+    set((state) => ({
+      historyState: patchResourceState(state.historyState, {
+        error: null,
+        isLoading: true,
+      }),
+    }))
+
+    try {
+      const response = await getTradeHistory()
+      set((state) => ({
+        historyState: patchResourceState(state.historyState, {
+          error: null,
+          isLoading: false,
+          lastLoadedAt: Date.now(),
+        }),
+        tradeHistory: response.trades.map(normalizeClosedTrade),
+      }))
+    } catch (error) {
+      set((state) => ({
+        historyState: patchResourceState(state.historyState, {
+          error: error instanceof Error ? error.message : 'Failed to load trade history',
+          isLoading: false,
+        }),
+      }))
+    }
+  },
+
+  loadProfile: async () => {
+    set((state) => ({
+      profileState: patchResourceState(state.profileState, {
+        error: null,
+        isLoading: true,
+      }),
+    }))
+
+    try {
+      const response = await getProfile()
+      set((state) => ({
+        achievements: response.achievements.map(normalizeAchievement),
+        profile: normalizeProfile(response.profile),
+        profileSettings: response.settings.map(normalizeProfileSetting),
+        profileState: patchResourceState(state.profileState, {
+          error: null,
+          isLoading: false,
+          lastLoadedAt: Date.now(),
+        }),
+        profileStats: normalizeProfileStats(response.stats),
+      }))
+    } catch (error) {
+      set((state) => ({
+        profileState: patchResourceState(state.profileState, {
+          error: error instanceof Error ? error.message : 'Failed to load profile',
+          isLoading: false,
+        }),
+      }))
+    }
+  },
+
+  fetchCandles: async (symbol, options) => {
+    const currentState = get().chartStates[symbol] ?? createResourceState()
+
+    if (!options?.silent) {
+      set((state) => ({
+        chartStates: {
+          ...state.chartStates,
+          [symbol]: patchResourceState(currentState, {
+            error: null,
+            isLoading: true,
+          }),
+        },
+      }))
+    }
+
+    try {
+      const response = await getCandles(symbol)
+
+      set((state) => ({
+        candlesBySymbol: {
+          ...state.candlesBySymbol,
+          [symbol]: response.candles.map(normalizeCandle),
+        },
+        chartStates: {
+          ...state.chartStates,
+          [symbol]: patchResourceState(state.chartStates[symbol] ?? createResourceState(), {
+            error: null,
+            isLoading: false,
+            lastLoadedAt: Date.now(),
+          }),
+        },
+      }))
+    } catch (error) {
+      set((state) => ({
+        chartStates: {
+          ...state.chartStates,
+          [symbol]: patchResourceState(state.chartStates[symbol] ?? createResourceState(), {
+            error: error instanceof Error ? error.message : 'Failed to load candles',
+            isLoading: false,
+          }),
+        },
+      }))
+    }
+  },
+
+  openTrade: async (payload) => {
+    set((state) => ({
+      tradeActionState: patchResourceState(state.tradeActionState, {
+        error: null,
+        isLoading: true,
+      }),
+    }))
+
+    try {
+      const response = await createTrade({
+        direction: payload.direction,
+        entryPrice: payload.entryPrice?.toString(),
+        lotSize: payload.lotSize.toString(),
+        stopLoss: payload.stopLoss?.toString(),
+        symbol: payload.instrument,
+        takeProfit: payload.takeProfit?.toString(),
+      })
+
+      set((state) => {
+        const nextTrades = response.activeTrade
+          ? [normalizeTrade(response.activeTrade), ...state.activeTrades]
+          : state.activeTrades
+        const nextQuotes = response.quotes?.map(normalizeQuote) ?? Object.values(state.quotes)
+
+        return {
+          activeTrades: nextTrades,
+          currentPrices: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote.last])),
+          quotes: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote])),
+          sessionStats: normalizeSessionStats(response.sessionStats),
+          summary: normalizeSummary(response.summary),
+          tradeActionState: patchResourceState(state.tradeActionState, {
+            error: null,
+            isLoading: false,
+            lastLoadedAt: Date.now(),
+          }),
+        }
+      })
+    } catch (error) {
+      set((state) => ({
+        tradeActionState: patchResourceState(state.tradeActionState, {
+          error: error instanceof Error ? error.message : 'Failed to open trade',
+          isLoading: false,
+        }),
+      }))
+      throw error
+    }
+  },
+
+  closeTrade: async (tradeId) => {
+    set((state) => ({
+      tradeActionState: patchResourceState(state.tradeActionState, {
+        error: null,
+        isLoading: true,
+      }),
+    }))
+
+    try {
+      const response = await closeTradeRequest({ tradeId })
+
+      set((state) => {
+        const remainingTrades = state.activeTrades.filter((trade) => trade.id !== tradeId)
+        const nextHistory = response.closedTrade
+          ? [normalizeClosedTrade(response.closedTrade), ...state.tradeHistory]
+          : state.tradeHistory
+        const nextQuotes = response.quotes?.map(normalizeQuote) ?? Object.values(state.quotes)
+
+        return {
+          activeTrades: remainingTrades,
+          currentPrices: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote.last])),
+          quotes: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote])),
+          sessionStats: normalizeSessionStats(response.sessionStats),
+          summary: normalizeSummary(response.summary),
+          tradeActionState: patchResourceState(state.tradeActionState, {
+            error: null,
+            isLoading: false,
+            lastLoadedAt: Date.now(),
+          }),
+          tradeHistory: nextHistory,
+        }
+      })
+    } catch (error) {
+      set((state) => ({
+        tradeActionState: patchResourceState(state.tradeActionState, {
+          error: error instanceof Error ? error.message : 'Failed to close trade',
+          isLoading: false,
+        }),
+      }))
+      throw error
+    }
+  },
+
+  subscribeSymbol: (symbol) => {
+    realtimeClient?.subscribe([symbol])
+  },
+
+  connectRealtime: () => {
+    if (typeof window === 'undefined') {
+      return () => undefined
+    }
+
+    realtimeClient?.disconnect()
+
+    realtimeClient = new TradingWebSocketClient({
+      onMessage: (message: TradingServerMessage) => {
+        set((state) => {
+          if (message.type === 'PRICE_TICK') {
+            const quote = normalizeQuote(message)
+            return {
+              currentPrices: {
+                ...state.currentPrices,
+                [quote.symbol]: quote.last,
+              },
+              quotes: {
+                ...state.quotes,
+                [quote.symbol]: quote,
+              },
+            }
+          }
+
+          if (message.type === 'CANDLE_UPDATE') {
+            const candle = normalizeCandle(message.candle)
+            const currentCandles = state.candlesBySymbol[message.symbol] ?? []
+            const lastCandle = currentCandles[currentCandles.length - 1]
+            const nextCandles =
+              lastCandle && lastCandle.time === candle.time
+                ? [...currentCandles.slice(0, -1), candle]
+                : [...currentCandles, candle].slice(-400)
+
+            return {
+              candlesBySymbol: {
+                ...state.candlesBySymbol,
+                [message.symbol]: nextCandles,
+              },
+            }
+          }
+
+          if (message.type === 'BALANCE_UPDATE') {
+            return {
+              summary: state.summary
+                ? {
+                    ...state.summary,
+                    balance: Number.parseFloat(message.balance),
+                    equity: Number.parseFloat(message.equity),
+                    floatingPnl: Number.parseFloat(message.floatingPnl),
+                    totalPnl: message.totalPnl ? Number.parseFloat(message.totalPnl) : state.summary.totalPnl,
+                    winRate: message.winRate ?? state.summary.winRate,
+                  }
+                : state.summary,
+            }
+          }
+
+          if (message.type === 'TRADE_STATUS_UPDATE') {
+            if (message.tradeStatus === 'CLOSED') {
+              const closedTrade = normalizeClosedTrade(message.trade as never)
+              return {
+                activeTrades: state.activeTrades.filter((trade) => trade.id !== closedTrade.id),
+                tradeHistory: [closedTrade, ...state.tradeHistory],
+              }
+            }
+
+            const liveTrade = normalizeTrade(message.trade as never)
+            const existing = state.activeTrades.find((trade) => trade.id === liveTrade.id)
+            const activeTrades = existing
+              ? state.activeTrades.map((trade) => (trade.id === liveTrade.id ? liveTrade : trade))
+              : [liveTrade, ...state.activeTrades]
+
+            return { activeTrades }
+          }
+
+          if (message.type === 'SESSION_STATS_UPDATE') {
+            return {
+              sessionStats: normalizeSessionStats(message.sessionStats),
+            }
+          }
+
+          return {}
+        })
+      },
+      onStatusChange: (status) => {
+        set({ connectionStatus: status })
+      },
+    })
+
+    realtimeClient.connect()
+
+    return () => {
+      realtimeClient?.disconnect()
+      realtimeClient = null
+      set({ connectionStatus: 'OFFLINE' })
+    }
+  },
+
+  startPolling: (symbol) => {
+    if (typeof window === 'undefined') {
+      return () => undefined
+    }
+
+    if (pollingTimer) {
+      clearInterval(pollingTimer)
+      pollingTimer = null
+    }
+
+    const poll = () => {
+      void get().bootstrapDashboard({ silent: true })
+      void get().fetchCandles(symbol, { silent: true })
+    }
+
+    poll()
+    pollingTimer = setInterval(poll, 15000)
+
+    return () => {
+      if (pollingTimer) {
+        clearInterval(pollingTimer)
+        pollingTimer = null
+      }
+    }
+  },
+}))

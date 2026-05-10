@@ -1,0 +1,302 @@
+REALTIME DASHBOARD DEPLOYMENT GUIDE
+==================================
+
+1. OVERVIEW
+-----------
+Backend deploy target: Render
+Frontend deploy target: Netlify
+Database: Neon PostgreSQL
+Realtime transport: Django Channels WebSocket over Daphne
+
+Production start command for backend:
+daphne -b 0.0.0.0 -p $PORT config.asgi:application
+
+
+2. FILES USED FOR DEPLOY
+------------------------
+Backend Render build script:
+back/build.sh
+
+Backend settings:
+back/config/settings.py
+
+Backend ASGI entry:
+back/config/asgi.py
+
+Backend health endpoint:
+back/config/urls.py
+back/apps/trading/api/views.py
+
+Render blueprint example:
+render.yaml
+
+Frontend Netlify config:
+netlify.toml
+
+Backend env example:
+back/.env.example
+
+Frontend env example:
+front/.env.example
+
+
+3. BACKEND DEPLOY TO RENDER
+---------------------------
+Render service type:
+Web Service
+
+Repository root:
+This repository
+
+Root Directory:
+back
+
+Runtime:
+Python 3
+
+Build Command:
+bash build.sh
+
+Start Command:
+daphne -b 0.0.0.0 -p $PORT config.asgi:application
+
+Health Check Path:
+/api/health
+
+Important Render notes:
+- back/build.sh installs dependencies
+- back/build.sh runs collectstatic
+- back/build.sh runs migrations
+- Daphne serves both HTTP and WebSocket through ASGI
+- PORT is injected by Render automatically
+
+
+4. BACKEND ENV VARIABLES FOR RENDER
+-----------------------------------
+Add these in Render -> Service -> Environment:
+
+DATABASE_URL=postgresql://USER:PASSWORD@HOST.neon.tech/DATABASE?sslmode=require
+DJANGO_SECRET_KEY=replace-with-a-long-random-secret
+DJANGO_DEBUG=false
+DJANGO_ALLOWED_HOSTS=your-render-service.onrender.com
+CORS_ALLOWED_ORIGINS=https://your-netlify-site.netlify.app
+DJANGO_CSRF_TRUSTED_ORIGINS=https://your-netlify-site.netlify.app
+REDIS_URL=redis://default:password@host:port
+ENVIRONMENT=production
+WS_ALLOWED_ORIGINS=https://your-netlify-site.netlify.app
+MARKET_STREAM_AUTOSTART=true
+MARKET_STREAM_INTERVAL_MS=1500
+LOG_LEVEL=INFO
+
+Notes:
+- DATABASE_URL must be the Neon pooled or direct PostgreSQL string with sslmode=require
+- DJANGO_ALLOWED_HOSTS can contain multiple hosts separated by commas
+- CORS_ALLOWED_ORIGINS must include the exact Netlify site URL with https
+- DJANGO_CSRF_TRUSTED_ORIGINS must include the exact Netlify site URL with https
+- REDIS_URL is strongly recommended for production WebSocket fan-out
+
+
+5. HOW TO CONNECT NEON
+----------------------
+In Neon:
+1. Open your project
+2. Open Dashboard
+3. Click Connection Details
+4. Copy the PostgreSQL connection string
+5. Make sure it includes sslmode=require
+6. Paste it into Render as DATABASE_URL
+
+Recommended:
+- Use the pooled connection string for web workloads
+- Keep the database in PostgreSQL mode only
+- Do not switch to SQLite anywhere
+
+
+6. FRONTEND DEPLOY TO NETLIFY
+-----------------------------
+Netlify site settings:
+
+Base directory:
+front
+
+Build command:
+npm run build
+
+Publish directory:
+out
+
+Node version:
+20
+
+Frontend environment variables:
+NEXT_PUBLIC_API_URL=https://your-render-service.onrender.com
+NEXT_PUBLIC_WS_URL=wss://your-render-service.onrender.com/ws/trading
+
+Notes:
+- In production the WebSocket URL must use wss://
+- Do not leave localhost values in Netlify env settings
+- Frontend code falls back to localhost only in non-production mode
+
+
+7. MANUAL CLICK PATH: RENDER
+----------------------------
+1. Open Render
+2. Click New +
+3. Click Web Service
+4. Connect the Git repository
+5. Choose the repository
+6. Set Name to your backend service name
+7. Set Root Directory to back
+8. Set Runtime to Python 3
+9. Paste Build Command: bash build.sh
+10. Paste Start Command: daphne -b 0.0.0.0 -p $PORT config.asgi:application
+11. Set Health Check Path to /api/health
+12. Open Environment
+13. Add all backend env variables
+14. Click Create Web Service
+15. Wait for build and deployment to finish
+16. Open the generated Render URL
+17. Check /api/health
+
+
+8. MANUAL CLICK PATH: NETLIFY
+-----------------------------
+1. Open Netlify
+2. Click Add new site
+3. Click Import an existing project
+4. Connect the Git provider
+5. Choose the repository
+6. Set Base directory to front
+7. Set Build command to npm run build
+8. Set Publish directory to out
+9. Open Environment variables
+10. Add NEXT_PUBLIC_API_URL
+11. Add NEXT_PUBLIC_WS_URL
+12. Click Deploy site
+13. Wait for build to finish
+14. Open the generated Netlify URL
+
+
+9. HOW TO VERIFY BACKEND
+------------------------
+Check health endpoint:
+GET https://your-render-service.onrender.com/api/health
+
+Expected JSON:
+- status = ok
+- database = connected
+- websocket = active
+
+Also verify:
+- Render logs show Daphne started successfully
+- No import errors
+- No migration errors
+- No staticfiles errors
+
+
+10. HOW TO VERIFY FRONTEND
+-------------------------
+Open:
+https://your-netlify-site.netlify.app
+
+Check:
+- login page opens
+- dashboard loads
+- REST data appears
+- no browser console errors for API base URL
+- no localhost requests in Network tab
+
+
+11. HOW TO VERIFY WEBSOCKET
+---------------------------
+Browser method:
+1. Open the deployed frontend
+2. Open browser DevTools
+3. Open Network tab
+4. Filter by WS
+5. Find the WebSocket request to /ws/trading
+6. Confirm the status is 101 Switching Protocols
+7. Open Messages/Frames
+8. Confirm HEARTBEAT frames appear
+9. Confirm PRICE_TICK or CANDLE_UPDATE frames arrive
+
+Direct test:
+- Connect to wss://your-render-service.onrender.com/ws/trading
+- Send:
+  {"type":"SUBSCRIBE","channels":["balance","prices","candles","trades","sessionStats"],"symbols":["BTCUSD"]}
+- Expect server frames after subscription
+
+
+12. LOCAL PRE-DEPLOY CHECKLIST
+------------------------------
+Backend:
+cd back
+pip install -r requirements.txt
+python manage.py check
+python manage.py migrate
+python manage.py collectstatic --noinput
+python -m daphne -b 0.0.0.0 -p 8000 config.asgi:application
+
+Frontend:
+cd front
+npm install
+npm run build
+
+
+13. COMMON ERRORS AND FIXES
+---------------------------
+Error: Invalid HTTP_HOST header
+Fix:
+- Add the exact Render hostname into DJANGO_ALLOWED_HOSTS
+
+Error: CORS blocked in browser
+Fix:
+- Add exact Netlify URL into CORS_ALLOWED_ORIGINS
+- Do not use trailing slash mismatches carelessly
+
+Error: CSRF trusted origin failure
+Fix:
+- Add exact https Netlify URL into DJANGO_CSRF_TRUSTED_ORIGINS
+
+Error: Database connection failed
+Fix:
+- Re-copy Neon connection string
+- Make sure sslmode=require is present
+- Confirm credentials are correct
+
+Error: WebSocket disconnects immediately
+Fix:
+- Verify NEXT_PUBLIC_WS_URL uses wss:// in Netlify
+- Verify WS_ALLOWED_ORIGINS includes the frontend origin
+- Check Render logs for OriginValidator failures
+
+Error: WebSocket connects but updates do not fan out across instances
+Fix:
+- Set REDIS_URL
+- Keep a real Redis instance configured for Channels
+
+Error: Static files build fails
+Fix:
+- Confirm WhiteNoise is installed
+- Confirm collectstatic runs in back/build.sh
+
+Error: Frontend still calls localhost in production
+Fix:
+- Recheck Netlify env variables
+- Trigger a fresh deploy after updating env variables
+- Confirm built JS no longer references localhost as the chosen runtime URL
+
+
+14. EXPECTED PRODUCTION URLS
+----------------------------
+Backend base:
+https://your-render-service.onrender.com
+
+Backend health:
+https://your-render-service.onrender.com/api/health
+
+Backend websocket:
+wss://your-render-service.onrender.com/ws/trading
+
+Frontend:
+https://your-netlify-site.netlify.app

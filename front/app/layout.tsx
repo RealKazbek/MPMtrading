@@ -1,5 +1,18 @@
 import type { Metadata } from 'next'
+import { Fraunces, Manrope } from 'next/font/google'
 import './globals.css'
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+  display: 'swap',
+})
+
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'MPM Trading',
@@ -13,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <body className={`${manrope.variable} ${fraunces.variable}`}>
         {children}
       </body>
     </html>
