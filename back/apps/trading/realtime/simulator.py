@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections import deque
 from dataclasses import dataclass
 from random import Random
 from threading import Lock
 from typing import Any
 
+from channels.layers import get_channel_layer
+from django.conf import settings
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+MARKET_STREAM_GROUP = "market_stream"
 
 
 @dataclass(frozen=True)
@@ -30,6 +38,8 @@ class MarketSimulator:
         self._lock = Lock()
         self._random = Random(42)
         self._state: dict[str, dict[str, Any]] = {}
+        self._task: asyncio.Task[None] | None = None
+        self._is_running = False
         self._bootstrap()
 
     def _bootstrap(self) -> None:
@@ -97,6 +107,53 @@ class MarketSimulator:
             for symbol, state in self._state.items():
                 updates.append(self._update_symbol(symbol, state))
             return updates
+
+    async def ensure_started(self) -> None:
+        task = self._task
+        if self._is_running and task is not None and not task.done():
+            return
+
+        with self._lock:
+            task = self._task
+            if self._is_running and task is not None and not task.done():
+                return
+
+            self._is_running = True
+            self._task = asyncio.create_task(self._run_stream(), name="market-simulator-stream")
+
+        logger.info("Market simulator started.")
+
+    async def _run_stream(self) -> None:
+        interval_seconds = settings.MARKET_STREAM_INTERVAL_MS / 1000
+
+        try:
+            while True:
+                await asyncio.sleep(interval_seconds)
+                updates = self.tick()
+                await self._broadcast_batch(updates)
+        except asyncio.CancelledError:
+            logger.info("Market simulator stopped.")
+            raise
+        finally:
+            with self._lock:
+                self._is_running = False
+                self._task = None
+
+    async def _broadcast_batch(self, updates: list[dict[str, Any]]) -> None:
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            logger.warning("Market simulator broadcast skipped: no channel layer configured.")
+            return
+
+        message = {
+            "type": "market.batch",
+            "message": {
+                "type": "MARKET_BATCH",
+                "updates": updates,
+            },
+        }
+        await channel_layer.group_send(MARKET_STREAM_GROUP, message)
+        logger.info("Market simulator broadcast sent with %s symbols.", len(updates))
 
     def _update_symbol(self, symbol: str, state: dict[str, Any]) -> dict[str, Any]:
         previous_price = float(state["last_price"])
