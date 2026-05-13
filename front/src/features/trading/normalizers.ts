@@ -63,10 +63,17 @@ export function normalizeInstrument(dto: InstrumentDto): InstrumentMeta {
 }
 
 export function normalizeQuote(dto: QuoteDto): Quote {
+  const last = toNumber(dto.last)
+
   return {
     ask: toNumber(dto.ask),
     bid: toNumber(dto.bid),
+    change: 0,
+    changePercent: 0,
+    displayName: dto.symbol,
     last: toNumber(dto.last),
+    price: last,
+    pricePrecision: 2,
     symbol: dto.symbol,
     timestamp: dto.timestamp,
   }

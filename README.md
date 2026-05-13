@@ -1,39 +1,22 @@
-# Realtime Dashboard
+# MPM Trading Dashboard
 
-Production-ready university project with a hybrid REST + WebSocket architecture.
+Учебный realtime dashboard, в котором Django backend генерирует тестовые рыночные котировки и отправляет их на frontend через WebSocket. Интерфейс обновляется в реальном времени без перезагрузки страницы.
 
-## Stack
+## Технологии
 
 - Frontend: Next.js 14, React 18, TypeScript, Zustand, Tailwind CSS
 - Backend: Django 6, Django REST Framework, Django Channels, Daphne
-- Database: Neon PostgreSQL
-- Realtime: WebSocket with heartbeat, reconnect, and subscription channels
-- Deploy: Render for backend, Netlify for frontend
+- Realtime: WebSocket over ASGI
+- Deploy: Netlify для frontend, Render для backend
 
-## Architecture
+## Структура проекта
 
-1. Frontend loads initial screen data through REST.
-2. Frontend opens `WS /ws/trading`.
-3. Client sends `SUBSCRIBE` with channels and symbols.
-4. Django Channels broadcasts realtime events through the ASGI app.
-5. PostgreSQL stores persistent trading, profile, market, and connection data.
-6. Redis can be attached in production for multi-process WebSocket fan-out.
+- [back](C:/Users/Kazbek/Desktop/websocket/back) - Django backend
+- [front](C:/Users/Kazbek/Desktop/websocket/front) - Next.js frontend
+- [render.yaml](C:/Users/Kazbek/Desktop/websocket/render.yaml) - пример конфигурации Render
+- [netlify.toml](C:/Users/Kazbek/Desktop/websocket/netlify.toml) - конфигурация Netlify
 
-## Repository Structure
-
-```text
-websocket/
-  back/                  Django backend
-    build.sh             Render build script
-    .env.example         Backend env template
-  front/                 Next.js frontend
-    .env.example         Frontend env template
-  render.yaml            Render blueprint example
-  netlify.toml           Netlify build configuration
-  DEPLOYMENT_GUIDE.txt   Step-by-step deploy guide
-```
-
-## Backend Run
+## Локальный запуск backend
 
 ```bash
 cd back
@@ -43,18 +26,12 @@ pip install -r requirements.txt
 copy .env.example .env
 python manage.py migrate
 python manage.py check
-python manage.py collectstatic --noinput
-python -m daphne -b 0.0.0.0 -p 8000 config.asgi:application
+python manage.py runserver
 ```
 
-Optional market stream command:
+Локально backend работает без Redis. Для Channels используется `InMemoryChannelLayer`, поэтому `python manage.py runserver` остается рабочим вариантом для разработки.
 
-```bash
-cd back
-python manage.py run_market_stream
-```
-
-## Frontend Run
+## Локальный запуск frontend
 
 ```bash
 cd front
@@ -63,59 +40,140 @@ copy .env.example .env.local
 npm run dev
 ```
 
-## Required Environment Variables
+Локальный WebSocket endpoint:
+
+```text
+ws://127.0.0.1:8000/ws/market/
+```
+
+## Переменные окружения
 
 ### Backend
 
+См. шаблон: [back/.env.example](C:/Users/Kazbek/Desktop/websocket/back/.env.example)
+
+Ключевые переменные:
+
 ```env
-DATABASE_URL=postgresql://USER:PASSWORD@HOST.neon.tech/DATABASE?sslmode=require
-DJANGO_SECRET_KEY=replace-me
+DJANGO_SECRET_KEY=change-me
 DJANGO_DEBUG=false
-DJANGO_ALLOWED_HOSTS=your-backend.onrender.com
-CORS_ALLOWED_ORIGINS=https://your-frontend.netlify.app
-DJANGO_CSRF_TRUSTED_ORIGINS=https://your-frontend.netlify.app
-REDIS_URL=redis://default:password@host:port
+ENVIRONMENT=production
+DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost,.onrender.com,mpmtrading.onrender.com
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://mpmtrading.netlify.app
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://mpmtrading.netlify.app
+WS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://mpmtrading.netlify.app
+DATABASE_URL=postgresql://...
+REDIS_URL=
 ```
 
 ### Frontend
 
+См. шаблон: [front/.env.example](C:/Users/Kazbek/Desktop/websocket/front/.env.example)
+
 ```env
-NEXT_PUBLIC_API_URL=https://your-backend.onrender.com
-NEXT_PUBLIC_WS_URL=wss://your-backend.onrender.com/ws/trading
+NEXT_PUBLIC_API_URL=https://mpmtrading.onrender.com
+NEXT_PUBLIC_WS_URL=wss://mpmtrading.onrender.com/ws/market/
 ```
 
-## Deployment
+В production frontend должен использовать:
 
-- Backend Render entrypoint: `daphne -b 0.0.0.0 -p $PORT config.asgi:application`
-- Backend build script: [back/build.sh](C:/Users/Kazbek/Desktop/websocket/back/build.sh)
-- Frontend Netlify config: [netlify.toml](C:/Users/Kazbek/Desktop/websocket/netlify.toml)
-- Full deployment guide: [DEPLOYMENT_GUIDE.txt](C:/Users/Kazbek/Desktop/websocket/DEPLOYMENT_GUIDE.txt)
+```text
+wss://mpmtrading.onrender.com/ws/market/
+```
 
-## Realtime Flow
+Если `NEXT_PUBLIC_WS_URL` не задан, в development используется fallback:
 
-- REST bootstrap endpoints:
-  - `GET /api/dashboard/snapshot`
-  - `GET /api/profile`
-  - `GET /api/trades/history`
-  - `GET /api/markets/:symbol/candles`
-- WebSocket endpoint:
-  - `WS /ws/trading`
-- Client messages:
-  - `SUBSCRIBE`
-  - `UNSUBSCRIBE`
-  - `PONG`
-- Server messages:
-  - `PRICE_TICK`
-  - `CANDLE_UPDATE`
-  - `BALANCE_UPDATE`
-  - `TRADE_STATUS_UPDATE`
-  - `SESSION_STATS_UPDATE`
-  - `HEARTBEAT`
+```text
+ws://127.0.0.1:8000/ws/market/
+```
 
-## Production Verification
+## Деплой backend на Render
 
-1. Open backend health URL: `/api/health`
-2. Open deployed frontend on Netlify
-3. Confirm Network tab uses Render URL, not localhost
-4. Confirm WebSocket status `101 Switching Protocols`
-5. Confirm live frames arrive in DevTools
+1. Создать Web Service из папки `back`.
+2. Указать build command: `bash build.sh`
+3. Указать start command:
+
+```bash
+daphne -b 0.0.0.0 -p $PORT config.asgi:application
+```
+
+4. Добавить переменные окружения из `back/.env.example`
+5. Установить production secret key и database URL через Render environment variables
+6. При необходимости подключить Redis для fan-out между несколькими процессами
+
+Публичный адрес backend:
+
+```text
+https://mpmtrading.onrender.com
+```
+
+## Деплой frontend на Netlify
+
+Проект настроен как static export Next.js, поэтому отдельный Next.js runtime plugin не требуется.
+
+1. Подключить репозиторий в Netlify
+2. Base directory: `front`
+3. Build command: `npm run build`
+4. Publish directory: `out`
+5. Добавить переменные:
+
+```env
+NEXT_PUBLIC_API_URL=https://mpmtrading.onrender.com
+NEXT_PUBLIC_WS_URL=wss://mpmtrading.onrender.com/ws/market/
+```
+
+Публичный адрес frontend:
+
+```text
+https://mpmtrading.netlify.app
+```
+
+## WebSocket endpoint
+
+```text
+/ws/market/
+```
+
+Локально:
+
+```text
+ws://127.0.0.1:8000/ws/market/
+```
+
+В production:
+
+```text
+wss://mpmtrading.onrender.com/ws/market/
+```
+
+## Проверка WebSocket в DevTools
+
+1. Открыть frontend в браузере
+2. Открыть `DevTools -> Network`
+3. Выбрать фильтр `WS`
+4. Открыть соединение `/ws/market/`
+5. Проверить статус `101 Switching Protocols`
+6. Убедиться, что во Frames приходят сообщения `MARKET_SNAPSHOT`, `MARKET_BATCH` и `HEARTBEAT`
+
+## Build checks
+
+Backend:
+
+```bash
+cd back
+python manage.py check
+```
+
+Frontend:
+
+```bash
+cd front
+npm run build
+```
+
+## Соответствие требованиям задания
+
+- Сервер отправляет обновления каждые N секунд
+- Клиент получает данные через WebSocket
+- Dashboard обновляется без перезагрузки страницы
+- Внешний market API не требуется, данные генерируются локально

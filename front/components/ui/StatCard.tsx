@@ -35,10 +35,10 @@ export default function StatCard({
           <p className="metric-label">{label}</p>
           {aside}
         </div>
-        <p className={cn('metric-value mt-2 text-lg font-semibold break-words', toneClasses[tone])}>
+        <p className={cn('metric-value mt-1.5 text-[1.05rem] font-semibold break-words', toneClasses[tone])}>
           {value}
         </p>
-        {helper ? <p className="mt-1 text-xs text-[var(--color-text-soft)]">{helper}</p> : null}
+        {helper ? <p className="mt-1 text-[11px] text-[var(--color-text-soft)]">{helper}</p> : null}
       </div>
     </SurfaceCard>
   )

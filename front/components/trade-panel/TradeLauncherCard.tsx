@@ -23,17 +23,17 @@ export default function TradeLauncherCard({ instrument, currentPrice, onOpen }: 
     <SurfaceCard className="surface-card-muted">
       <div className="card-header">
         <div className="min-w-0">
-          <span className="eyebrow">Execution</span>
-          <h2 className="section-title mt-3 text-[1.05rem]">New trade</h2>
-          <p className="section-subtitle">Review price and open a position without leaving the panel.</p>
+          <span className="eyebrow">Исполнение</span>
+          <h2 className="section-title mt-3 text-[1.05rem]">Новая сделка</h2>
+          <p className="section-subtitle">Текущая цена и вход в один клик.</p>
         </div>
         <button type="button" onClick={onOpen} className="surface-button min-w-[9rem]">
-          Open trade
+          Открыть
         </button>
       </div>
 
-      <div className="mt-5 rounded-[18px] border border-[var(--color-border)] bg-white/75 p-4">
-        <p className="metric-label">{instrument} market price</p>
+      <div className="mt-5 rounded-[12px] border border-[var(--color-border)] bg-white/[0.03] p-4">
+        <p className="metric-label">{instrument} цена</p>
         <p className="metric-value mt-2 text-[1.75rem] font-semibold">
           {currentPrice ? formatPrice(currentPrice, precision) : '--'}
         </p>

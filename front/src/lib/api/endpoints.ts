@@ -9,5 +9,5 @@ export const API_ENDPOINTS = {
 } as const
 
 export const WS_ENDPOINTS = {
-  trading: '/ws/trading',
+  trading: '/ws/market/',
 } as const

@@ -1,23 +1,6 @@
 import { create } from 'zustand'
-import { createTrade, closeTrade as closeTradeRequest, getCandles, getDashboardSnapshot, getProfile, getTradeHistory } from '@/src/features/trading/api'
-import {
-  normalizeAchievement,
-  normalizeCandle,
-  normalizeClosedTrade,
-  normalizeInstrument,
-  normalizeProfile,
-  normalizeProfileSetting,
-  normalizeProfileStats,
-  normalizeQuote,
-  normalizeSessionStats,
-  normalizeSummary,
-  normalizeTrade,
-} from '@/src/features/trading/normalizers'
 import { TradingWebSocketClient } from '@/src/features/trading/realtime'
-import type {
-  ConnectionStatus,
-  TradingServerMessage,
-} from '@/src/lib/api/types'
+import type { ConnectionStatus, MarketTick, TradingServerMessage } from '@/src/lib/api/types'
 
 export type Direction = 'BUY' | 'SELL'
 export type Instrument = string
@@ -33,7 +16,12 @@ export interface CandleData {
 export interface Quote {
   ask: number
   bid: number
+  change: number
+  changePercent: number
+  displayName: string
   last: number
+  price: number
+  pricePrecision: number
   symbol: string
   timestamp: string
 }
@@ -130,11 +118,13 @@ interface TradingState {
   dashboardState: ResourceState
   historyState: ResourceState
   instruments: InstrumentMeta[]
+  market: Quote[]
   profile: null | Profile
   profileSettings: ProfileSetting[]
   profileState: ResourceState
   profileStats: null | ProfileStats
   quotes: Record<string, Quote>
+  selectedInstrument: Instrument
   sessionStats: null | SessionStats
   summary: null | Summary
   tradeActionState: ResourceState
@@ -154,6 +144,7 @@ interface TradingState {
     stopLoss?: number
     takeProfit?: number
   }) => Promise<void>
+  setSelectedInstrument: (symbol: Instrument) => void
   startPolling: (symbol: string) => () => void
   subscribeSymbol: (symbol: string) => void
 }
@@ -165,10 +156,44 @@ const createResourceState = (): ResourceState => ({
 })
 
 let realtimeClient: TradingWebSocketClient | null = null
-let pollingTimer: ReturnType<typeof setInterval> | null = null
+let realtimeSubscribers = 0
+let pendingDisconnect: ReturnType<typeof setTimeout> | null = null
 
 function patchResourceState(current: ResourceState, patch: Partial<ResourceState>): ResourceState {
   return { ...current, ...patch }
+}
+
+function normalizeTick(tick: Omit<MarketTick, 'candle'> | MarketTick): Quote {
+  const spread = tick.price < 10 ? 0.0002 : tick.price * 0.0003
+
+  return {
+    ask: tick.price + spread,
+    bid: Math.max(tick.price - spread, 0),
+    change: tick.change,
+    changePercent: tick.change_percent,
+    displayName: tick.displayName,
+    last: tick.price,
+    price: tick.price,
+    pricePrecision: tick.pricePrecision,
+    symbol: tick.symbol,
+    timestamp: tick.timestamp,
+  }
+}
+
+function normalizeCandle(candle: {
+  close: number
+  high: number
+  low: number
+  open: number
+  timestamp: string
+}): CandleData {
+  return {
+    close: candle.close,
+    high: candle.high,
+    low: candle.low,
+    open: candle.open,
+    time: Math.floor(new Date(candle.timestamp).getTime() / 1000),
+  }
 }
 
 export const useTradingStore = create<TradingState>()((set, get) => ({
@@ -178,255 +203,82 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
   chartStates: {},
   connectionStatus: 'OFFLINE',
   currentPrices: {},
-  dashboardState: createResourceState(),
+  dashboardState: patchResourceState(createResourceState(), { isLoading: true }),
   historyState: createResourceState(),
   instruments: [],
+  market: [],
   profile: null,
   profileSettings: [],
   profileState: createResourceState(),
   profileStats: null,
   quotes: {},
+  selectedInstrument: '',
   sessionStats: null,
   summary: null,
   tradeActionState: createResourceState(),
   tradeHistory: [],
 
-  bootstrapDashboard: async (options) => {
-    if (!options?.silent) {
-      set((state) => ({
-        dashboardState: patchResourceState(state.dashboardState, {
-          error: null,
-          isLoading: true,
-        }),
-      }))
-    }
-
-    try {
-      const response = await getDashboardSnapshot()
-      const instruments = response.instruments.map(normalizeInstrument)
-      const quotes = response.quotes.map(normalizeQuote)
-      const currentPrices = Object.fromEntries(quotes.map((quote) => [quote.symbol, quote.last]))
-
-      set((state) => ({
-        activeTrades: response.activeTrades.map(normalizeTrade),
-        currentPrices,
-        dashboardState: patchResourceState(state.dashboardState, {
-          error: null,
-          isLoading: false,
-          lastLoadedAt: Date.now(),
-        }),
-        instruments,
-        quotes: Object.fromEntries(quotes.map((quote) => [quote.symbol, quote])),
-        sessionStats: normalizeSessionStats(response.sessionStats),
-        summary: normalizeSummary(response.summary),
-      }))
-    } catch (error) {
-      set((state) => ({
-        dashboardState: patchResourceState(state.dashboardState, {
-          error: error instanceof Error ? error.message : 'Failed to load dashboard',
-          isLoading: false,
-        }),
-      }))
-    }
+  bootstrapDashboard: async () => {
+    set((state) => ({
+      dashboardState: patchResourceState(state.dashboardState, {
+        error: null,
+        isLoading: true,
+      }),
+    }))
   },
 
   loadHistory: async () => {
     set((state) => ({
       historyState: patchResourceState(state.historyState, {
         error: null,
-        isLoading: true,
+        isLoading: false,
+        lastLoadedAt: Date.now(),
       }),
+      tradeHistory: [],
     }))
-
-    try {
-      const response = await getTradeHistory()
-      set((state) => ({
-        historyState: patchResourceState(state.historyState, {
-          error: null,
-          isLoading: false,
-          lastLoadedAt: Date.now(),
-        }),
-        tradeHistory: response.trades.map(normalizeClosedTrade),
-      }))
-    } catch (error) {
-      set((state) => ({
-        historyState: patchResourceState(state.historyState, {
-          error: error instanceof Error ? error.message : 'Failed to load trade history',
-          isLoading: false,
-        }),
-      }))
-    }
   },
 
   loadProfile: async () => {
     set((state) => ({
+      achievements: [],
+      profile: {
+        email: 'demo@terminal.local',
+        memberSince: new Date().toISOString().slice(0, 10),
+        name: 'Демо-профиль',
+        tier: 'Учебный режим',
+      },
+      profileSettings: [
+        { label: 'Источник данных', value: 'Локальный генератор' },
+        { label: 'Транспорт', value: 'WebSocket / Channels' },
+      ],
       profileState: patchResourceState(state.profileState, {
         error: null,
-        isLoading: true,
+        isLoading: false,
+        lastLoadedAt: Date.now(),
       }),
+      profileStats: {
+        activeTrades: 0,
+        averageLoss: 0,
+        averageWin: 0,
+        balance: 0,
+        profitFactor: '0.00',
+        totalPnl: 0,
+        totalTrades: 0,
+        winRate: 0,
+      },
     }))
-
-    try {
-      const response = await getProfile()
-      set((state) => ({
-        achievements: response.achievements.map(normalizeAchievement),
-        profile: normalizeProfile(response.profile),
-        profileSettings: response.settings.map(normalizeProfileSetting),
-        profileState: patchResourceState(state.profileState, {
-          error: null,
-          isLoading: false,
-          lastLoadedAt: Date.now(),
-        }),
-        profileStats: normalizeProfileStats(response.stats),
-      }))
-    } catch (error) {
-      set((state) => ({
-        profileState: patchResourceState(state.profileState, {
-          error: error instanceof Error ? error.message : 'Failed to load profile',
-          isLoading: false,
-        }),
-      }))
-    }
   },
 
-  fetchCandles: async (symbol, options) => {
-    const currentState = get().chartStates[symbol] ?? createResourceState()
+  fetchCandles: async () => undefined,
 
-    if (!options?.silent) {
-      set((state) => ({
-        chartStates: {
-          ...state.chartStates,
-          [symbol]: patchResourceState(currentState, {
-            error: null,
-            isLoading: true,
-          }),
-        },
-      }))
-    }
+  openTrade: async () => undefined,
 
-    try {
-      const response = await getCandles(symbol)
+  closeTrade: async () => undefined,
 
-      set((state) => ({
-        candlesBySymbol: {
-          ...state.candlesBySymbol,
-          [symbol]: response.candles.map(normalizeCandle),
-        },
-        chartStates: {
-          ...state.chartStates,
-          [symbol]: patchResourceState(state.chartStates[symbol] ?? createResourceState(), {
-            error: null,
-            isLoading: false,
-            lastLoadedAt: Date.now(),
-          }),
-        },
-      }))
-    } catch (error) {
-      set((state) => ({
-        chartStates: {
-          ...state.chartStates,
-          [symbol]: patchResourceState(state.chartStates[symbol] ?? createResourceState(), {
-            error: error instanceof Error ? error.message : 'Failed to load candles',
-            isLoading: false,
-          }),
-        },
-      }))
-    }
-  },
+  subscribeSymbol: () => undefined,
 
-  openTrade: async (payload) => {
-    set((state) => ({
-      tradeActionState: patchResourceState(state.tradeActionState, {
-        error: null,
-        isLoading: true,
-      }),
-    }))
-
-    try {
-      const response = await createTrade({
-        direction: payload.direction,
-        entryPrice: payload.entryPrice?.toString(),
-        lotSize: payload.lotSize.toString(),
-        stopLoss: payload.stopLoss?.toString(),
-        symbol: payload.instrument,
-        takeProfit: payload.takeProfit?.toString(),
-      })
-
-      set((state) => {
-        const nextTrades = response.activeTrade
-          ? [normalizeTrade(response.activeTrade), ...state.activeTrades]
-          : state.activeTrades
-        const nextQuotes = response.quotes?.map(normalizeQuote) ?? Object.values(state.quotes)
-
-        return {
-          activeTrades: nextTrades,
-          currentPrices: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote.last])),
-          quotes: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote])),
-          sessionStats: normalizeSessionStats(response.sessionStats),
-          summary: normalizeSummary(response.summary),
-          tradeActionState: patchResourceState(state.tradeActionState, {
-            error: null,
-            isLoading: false,
-            lastLoadedAt: Date.now(),
-          }),
-        }
-      })
-    } catch (error) {
-      set((state) => ({
-        tradeActionState: patchResourceState(state.tradeActionState, {
-          error: error instanceof Error ? error.message : 'Failed to open trade',
-          isLoading: false,
-        }),
-      }))
-      throw error
-    }
-  },
-
-  closeTrade: async (tradeId) => {
-    set((state) => ({
-      tradeActionState: patchResourceState(state.tradeActionState, {
-        error: null,
-        isLoading: true,
-      }),
-    }))
-
-    try {
-      const response = await closeTradeRequest({ tradeId })
-
-      set((state) => {
-        const remainingTrades = state.activeTrades.filter((trade) => trade.id !== tradeId)
-        const nextHistory = response.closedTrade
-          ? [normalizeClosedTrade(response.closedTrade), ...state.tradeHistory]
-          : state.tradeHistory
-        const nextQuotes = response.quotes?.map(normalizeQuote) ?? Object.values(state.quotes)
-
-        return {
-          activeTrades: remainingTrades,
-          currentPrices: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote.last])),
-          quotes: Object.fromEntries(nextQuotes.map((quote) => [quote.symbol, quote])),
-          sessionStats: normalizeSessionStats(response.sessionStats),
-          summary: normalizeSummary(response.summary),
-          tradeActionState: patchResourceState(state.tradeActionState, {
-            error: null,
-            isLoading: false,
-            lastLoadedAt: Date.now(),
-          }),
-          tradeHistory: nextHistory,
-        }
-      })
-    } catch (error) {
-      set((state) => ({
-        tradeActionState: patchResourceState(state.tradeActionState, {
-          error: error instanceof Error ? error.message : 'Failed to close trade',
-          isLoading: false,
-        }),
-      }))
-      throw error
-    }
-  },
-
-  subscribeSymbol: (symbol) => {
-    realtimeClient?.subscribe([symbol])
+  setSelectedInstrument: (symbol) => {
+    set({ selectedInstrument: symbol })
   },
 
   connectRealtime: () => {
@@ -434,121 +286,107 @@ export const useTradingStore = create<TradingState>()((set, get) => ({
       return () => undefined
     }
 
-    realtimeClient?.disconnect()
+    realtimeSubscribers += 1
 
-    realtimeClient = new TradingWebSocketClient({
-      onMessage: (message: TradingServerMessage) => {
-        set((state) => {
-          if (message.type === 'PRICE_TICK') {
-            const quote = normalizeQuote(message)
-            return {
-              currentPrices: {
-                ...state.currentPrices,
-                [quote.symbol]: quote.last,
-              },
-              quotes: {
-                ...state.quotes,
-                [quote.symbol]: quote,
-              },
-            }
+    if (pendingDisconnect) {
+      clearTimeout(pendingDisconnect)
+      pendingDisconnect = null
+    }
+
+    if (!realtimeClient) {
+      realtimeClient = new TradingWebSocketClient({
+        onMessage: (message: TradingServerMessage) => {
+          if (message.type === 'MARKET_SNAPSHOT') {
+            const market = message.market.map(normalizeTick)
+            const selectedInstrument = get().selectedInstrument || market[0]?.symbol || ''
+
+            set((state) => ({
+              candlesBySymbol: Object.fromEntries(
+                Object.entries(message.history).map(([symbol, candles]) => [
+                  symbol,
+                  candles.map(normalizeCandle),
+                ])
+              ),
+              chartStates: Object.fromEntries(
+                message.instruments.map((instrument) => [
+                  instrument.symbol,
+                  patchResourceState(state.chartStates[instrument.symbol] ?? createResourceState(), {
+                    error: null,
+                    isLoading: false,
+                    lastLoadedAt: Date.now(),
+                  }),
+                ])
+              ),
+              currentPrices: Object.fromEntries(market.map((item) => [item.symbol, item.price])),
+              dashboardState: patchResourceState(state.dashboardState, {
+                error: null,
+                isLoading: false,
+                lastLoadedAt: Date.now(),
+              }),
+              instruments: message.instruments,
+              market,
+              quotes: Object.fromEntries(market.map((item) => [item.symbol, item])),
+              selectedInstrument,
+            }))
+            return
           }
 
-          if (message.type === 'CANDLE_UPDATE') {
-            const candle = normalizeCandle(message.candle)
-            const currentCandles = state.candlesBySymbol[message.symbol] ?? []
-            const lastCandle = currentCandles[currentCandles.length - 1]
-            const nextCandles =
-              lastCandle && lastCandle.time === candle.time
-                ? [...currentCandles.slice(0, -1), candle]
-                : [...currentCandles, candle].slice(-400)
+          if (message.type === 'MARKET_BATCH') {
+            set((state) => {
+              const nextQuotes = { ...state.quotes }
+              const nextPrices = { ...state.currentPrices }
+              const nextCandles = { ...state.candlesBySymbol }
 
-            return {
-              candlesBySymbol: {
-                ...state.candlesBySymbol,
-                [message.symbol]: nextCandles,
-              },
-            }
-          }
+              for (const update of message.updates) {
+                const quote = normalizeTick(update)
+                nextQuotes[quote.symbol] = quote
+                nextPrices[quote.symbol] = quote.price
 
-          if (message.type === 'BALANCE_UPDATE') {
-            return {
-              summary: state.summary
-                ? {
-                    ...state.summary,
-                    balance: Number.parseFloat(message.balance),
-                    equity: Number.parseFloat(message.equity),
-                    floatingPnl: Number.parseFloat(message.floatingPnl),
-                    totalPnl: message.totalPnl ? Number.parseFloat(message.totalPnl) : state.summary.totalPnl,
-                    winRate: message.winRate ?? state.summary.winRate,
-                  }
-                : state.summary,
-            }
-          }
+                const normalizedCandle = normalizeCandle(update.candle)
+                const currentSeries = nextCandles[quote.symbol] ?? []
+                const lastCandle = currentSeries[currentSeries.length - 1]
 
-          if (message.type === 'TRADE_STATUS_UPDATE') {
-            if (message.tradeStatus === 'CLOSED') {
-              const closedTrade = normalizeClosedTrade(message.trade as never)
-              return {
-                activeTrades: state.activeTrades.filter((trade) => trade.id !== closedTrade.id),
-                tradeHistory: [closedTrade, ...state.tradeHistory],
+                nextCandles[quote.symbol] =
+                  lastCandle && lastCandle.time === normalizedCandle.time
+                    ? [...currentSeries.slice(0, -1), normalizedCandle]
+                    : [...currentSeries, normalizedCandle].slice(-120)
               }
-            }
 
-            const liveTrade = normalizeTrade(message.trade as never)
-            const existing = state.activeTrades.find((trade) => trade.id === liveTrade.id)
-            const activeTrades = existing
-              ? state.activeTrades.map((trade) => (trade.id === liveTrade.id ? liveTrade : trade))
-              : [liveTrade, ...state.activeTrades]
-
-            return { activeTrades }
+              return {
+                candlesBySymbol: nextCandles,
+                currentPrices: nextPrices,
+                market: Object.values(nextQuotes).sort((left, right) => left.symbol.localeCompare(right.symbol)),
+                quotes: nextQuotes,
+              }
+            })
           }
-
-          if (message.type === 'SESSION_STATS_UPDATE') {
-            return {
-              sessionStats: normalizeSessionStats(message.sessionStats),
-            }
-          }
-
-          return {}
-        })
-      },
-      onStatusChange: (status) => {
-        set({ connectionStatus: status })
-      },
-    })
+        },
+        onStatusChange: (status) => {
+          set({ connectionStatus: status })
+        },
+      })
+    }
 
     realtimeClient.connect()
 
     return () => {
-      realtimeClient?.disconnect()
-      realtimeClient = null
-      set({ connectionStatus: 'OFFLINE' })
-    }
-  },
+      realtimeSubscribers = Math.max(0, realtimeSubscribers - 1)
 
-  startPolling: (symbol) => {
-    if (typeof window === 'undefined') {
-      return () => undefined
-    }
-
-    if (pollingTimer) {
-      clearInterval(pollingTimer)
-      pollingTimer = null
-    }
-
-    const poll = () => {
-      void get().bootstrapDashboard({ silent: true })
-      void get().fetchCandles(symbol, { silent: true })
-    }
-
-    poll()
-    pollingTimer = setInterval(poll, 15000)
-
-    return () => {
-      if (pollingTimer) {
-        clearInterval(pollingTimer)
-        pollingTimer = null
+      if (pendingDisconnect) {
+        clearTimeout(pendingDisconnect)
       }
+
+      pendingDisconnect = setTimeout(() => {
+        if (realtimeSubscribers > 0) {
+          return
+        }
+
+        realtimeClient?.disconnect()
+        realtimeClient = null
+        set({ connectionStatus: 'OFFLINE' })
+      }, 150)
     }
   },
+
+  startPolling: () => () => undefined,
 }))

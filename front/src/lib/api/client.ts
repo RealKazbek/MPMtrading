@@ -17,7 +17,7 @@ function getApiBaseUrl() {
     return explicitUrl
   }
 
-  if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+  if (process.env.NODE_ENV !== 'production') {
     return 'http://127.0.0.1:8000'
   }
 

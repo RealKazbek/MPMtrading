@@ -1,7 +1,6 @@
 import { WS_ENDPOINTS } from '@/src/lib/api/endpoints'
 import type {
   ConnectionStatus,
-  TradingClientMessage,
   TradingServerMessage,
 } from '@/src/lib/api/types'
 
@@ -10,7 +9,6 @@ type TradingWebSocketClientOptions = {
   onStatusChange: (status: ConnectionStatus) => void
 }
 
-const HEARTBEAT_INTERVAL_MS = 20000
 const MAX_RECONNECT_DELAY_MS = 15000
 
 function getWsUrl() {
@@ -22,7 +20,7 @@ function getWsUrl() {
       : `${normalizedUrl}${WS_ENDPOINTS.trading}`
   }
 
-  if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+  if (process.env.NODE_ENV !== 'production') {
     return `ws://127.0.0.1:8000${WS_ENDPOINTS.trading}`
   }
 
@@ -30,12 +28,12 @@ function getWsUrl() {
 }
 
 export class TradingWebSocketClient {
-  private heartbeatInterval: ReturnType<typeof setInterval> | null = null
+  private isConnecting = false
+  private isDisposed = false
   private manualClose = false
   private reconnectAttempts = 0
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   private socket: WebSocket | null = null
-  private subscribedSymbols = new Set<string>()
 
   constructor(private readonly options: TradingWebSocketClientOptions) {}
 
@@ -47,7 +45,13 @@ export class TradingWebSocketClient {
       return
     }
 
+    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING || this.isConnecting)) {
+      return
+    }
+
     this.options.onStatusChange('CONNECTING')
+    this.isConnecting = true
+    this.isDisposed = false
     this.manualClose = false
 
     if (this.reconnectTimeout) {
@@ -55,39 +59,53 @@ export class TradingWebSocketClient {
       this.reconnectTimeout = null
     }
 
-    this.socket = new WebSocket(url)
+    const socket = new WebSocket(url)
+    this.socket = socket
 
-    this.socket.onopen = () => {
+    socket.onopen = () => {
+      if (this.socket !== socket || this.isDisposed) {
+        try {
+          socket.close()
+        } catch {
+          // Ignore stale socket cleanup.
+        }
+        return
+      }
+
+      this.isConnecting = false
       this.reconnectAttempts = 0
       this.options.onStatusChange('LIVE')
-      this.flushSubscriptions()
-      this.startHeartbeat()
     }
 
-    this.socket.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.socket !== socket || this.isDisposed) return
+
       try {
         const message = JSON.parse(event.data) as TradingServerMessage
-
-        if (message.type === 'HEARTBEAT') {
-          this.send({
-            timestamp: new Date().toISOString(),
-            type: 'PONG',
-          })
-          return
-        }
-
         this.options.onMessage(message)
       } catch {
         // Ignore malformed frames without tearing down the current connection.
       }
     }
 
-    this.socket.onerror = () => {
+    socket.onerror = () => {
+      if (this.socket !== socket) return
+
+      this.isConnecting = false
       this.options.onStatusChange('OFFLINE')
     }
 
-    this.socket.onclose = () => {
-      this.stopHeartbeat()
+    socket.onclose = () => {
+      if (this.socket === socket) {
+        this.socket = null
+      }
+
+      this.isConnecting = false
+
+      if (this.isDisposed) {
+        return
+      }
+
       this.options.onStatusChange('OFFLINE')
 
       if (!this.manualClose) {
@@ -99,57 +117,35 @@ export class TradingWebSocketClient {
   }
 
   disconnect() {
+    this.isDisposed = true
     this.manualClose = true
-    this.stopHeartbeat()
+    this.isConnecting = false
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = null
     }
 
-    this.socket?.close()
+    const socket = this.socket
     this.socket = null
-  }
 
-  subscribe(symbols: string[]) {
-    this.subscribedSymbols = new Set(symbols)
-    this.flushSubscriptions()
-  }
-
-  private flushSubscriptions() {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (!socket) {
       return
     }
 
-    this.send({
-      channels: ['balance', 'prices', 'candles', 'trades', 'sessionStats'],
-      symbols: Array.from(this.subscribedSymbols),
-      type: 'SUBSCRIBE',
-    })
-  }
+    socket.onopen = null
+    socket.onmessage = null
+    socket.onerror = null
+    socket.onclose = null
 
-  private send(message: TradingClientMessage) {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
       return
     }
 
-    this.socket.send(JSON.stringify(message))
-  }
-
-  private startHeartbeat() {
-    this.stopHeartbeat()
-    this.heartbeatInterval = setInterval(() => {
-      this.send({
-        timestamp: new Date().toISOString(),
-        type: 'PONG',
-      })
-    }, HEARTBEAT_INTERVAL_MS)
-  }
-
-  private stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval)
-      this.heartbeatInterval = null
+    try {
+      socket.close()
+    } catch {
+      // Ignore disconnect races during dev StrictMode unmount.
     }
   }
 }

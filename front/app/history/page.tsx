@@ -31,11 +31,11 @@ export default function HistoryPage() {
 
   const statCards = useMemo(
     () => [
-      { helper: 'Closed positions', icon: 'ALL', label: 'Total trades', tone: 'default' as const, value: String(tradeHistory.length) },
-      { helper: 'Profitable closes', icon: 'WIN', label: 'Wins', tone: 'success' as const, value: String(wins.length) },
-      { helper: 'Protected downside', icon: 'LOS', label: 'Losses', tone: 'danger' as const, value: String(losses.length) },
-      { helper: 'Hit ratio', icon: 'RTE', tone: 'default' as const, label: 'Win rate', value: `${winRate.toFixed(1)}%` },
-      { helper: 'Closed performance', icon: 'PNL', label: 'Total PnL', tone: totalPnL >= 0 ? 'success' as const : 'danger' as const, value: formatPnL(totalPnL) },
+      { helper: 'Закрытые позиции', icon: 'ALL', label: 'Сделки', tone: 'default' as const, value: String(tradeHistory.length) },
+      { helper: 'Прибыльные закрытия', icon: 'WIN', label: 'Победы', tone: 'success' as const, value: String(wins.length) },
+      { helper: 'Убыточные закрытия', icon: 'LOS', label: 'Убытки', tone: 'danger' as const, value: String(losses.length) },
+      { helper: 'Доля прибыльных', icon: 'RTE', tone: 'default' as const, label: 'Винрейт', value: `${winRate.toFixed(1)}%` },
+      { helper: 'Итог по истории', icon: 'PNL', label: 'Суммарный PnL', tone: totalPnL >= 0 ? 'success' as const : 'danger' as const, value: formatPnL(totalPnL) },
     ],
     [losses.length, totalPnL, tradeHistory.length, winRate, wins.length]
   )
@@ -46,9 +46,9 @@ export default function HistoryPage() {
 
       <main className="app-main page-stack">
         <PageHeader
-          eyebrow="Journal"
-          title="Trade history"
-          subtitle="A cleaner ledger for reviewing execution quality, payout distribution and overall consistency."
+          eyebrow="Журнал"
+          title="История"
+          subtitle="Сделки, статистика и итог по закрытым позициям."
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -69,12 +69,12 @@ export default function HistoryPage() {
 
         {historyState.error && tradeHistory.length === 0 ? (
           <InlineMessage
-            actionLabel="Retry"
+            actionLabel="Повторить"
             description={historyState.error}
             onAction={() => {
               void useTradingStore.getState().loadHistory()
             }}
-            title="Trade history unavailable"
+            title="История недоступна"
             tone="danger"
           />
         ) : null}
@@ -82,32 +82,32 @@ export default function HistoryPage() {
         <SurfaceCard>
           <div className="card-header">
             <div>
-              <h2 className="section-title">Win / loss ratio</h2>
-              <p className="section-subtitle">A single glance view of outcome distribution across all closed trades.</p>
+              <h2 className="section-title">Соотношение результатов</h2>
+              <p className="section-subtitle">Распределение прибыльных и убыточных сделок.</p>
             </div>
             <span className="chip">{wins.length}W / {losses.length}L</span>
           </div>
 
-          <div className="mt-5 h-3 overflow-hidden rounded-full bg-[var(--color-bg-soft)]">
+          <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[var(--color-bg-soft)]">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#1bbf83,#5fd5aa)]"
+              className="h-full rounded-full bg-[linear-gradient(90deg,#21c67a,#59d49b)]"
               style={{ width: `${Math.max(winRate, 8)}%` }}
             />
           </div>
 
           <div className="mt-3 flex items-center justify-between text-sm">
-            <span className="text-[var(--color-success)]">{winRate.toFixed(1)}% win</span>
-            <span className="text-[var(--color-danger)]">{(100 - winRate).toFixed(1)}% loss</span>
+            <span className="text-[var(--color-success)]">{winRate.toFixed(1)}% прибыльных</span>
+            <span className="text-[var(--color-danger)]">{(100 - winRate).toFixed(1)}% убыточных</span>
           </div>
         </SurfaceCard>
 
         <SurfaceCard>
           <div className="card-header">
             <div>
-              <h2 className="section-title">All trades</h2>
-              <p className="section-subtitle">Full history with stable numeric formatting and safer overflow handling.</p>
+              <h2 className="section-title">Лента сделок</h2>
+              <p className="section-subtitle">Полный журнал закрытых позиций.</p>
             </div>
-            <span className="chip chip-active">{tradeHistory.length} records</span>
+            <span className="chip chip-active">{tradeHistory.length} записей</span>
           </div>
 
           <div className="mt-5">

@@ -16,7 +16,7 @@ export default function LoginPage() {
     setError('')
 
     if (!email || !password) {
-      setError('Please fill in all fields')
+      setError('Заполните все поля')
       return
     }
 
@@ -31,23 +31,23 @@ export default function LoginPage() {
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_420px]">
           <SurfaceCard muted className="hidden min-h-[560px] lg:flex lg:flex-col lg:justify-between">
             <div>
-              <span className="eyebrow">MPM Trading</span>
+              <span className="eyebrow">MPM Terminal</span>
               <h1 className="page-title mt-5 max-w-[12ch]">
-                Quiet premium trading interface for focused execution.
+                Торговый терминал для сосредоточенной работы.
               </h1>
               <p className="page-subtitle">
-                The workspace is intentionally restrained: softer tones, clearer hierarchy, and tighter mobile ergonomics without touching business logic.
+                График, позиции и журнал в компактной профессиональной среде.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                ['Execution-first', 'Chart, orders and stats stay aligned without visual noise.'],
-                ['Responsive by default', 'Touch targets, safe-area padding and stacked cards work naturally on phones.'],
-                ['Stable rendering', 'Server redirect, font optimization and calmer layout reduce shift and hydration risk.'],
-                ['Production-ready UI', 'Shared tokens, reusable cards and consistent controls keep the system coherent.'],
+                ['Исполнение', 'Быстрый доступ к графику, сделке и позициям.'],
+                ['Структура', 'Данные выстроены по приоритету без лишнего текста.'],
+                ['Мобильная версия', 'Компактные панели и аккуратная адаптация.'],
+                ['Система UI', 'Единые карточки, поля и статусы по всему интерфейсу.'],
               ].map(([title, copy]) => (
-                <div key={title} className="rounded-[18px] border border-[var(--color-border)] bg-white/72 p-4">
+                <div key={title} className="rounded-[12px] border border-[var(--color-border)] bg-white/[0.03] p-4">
                   <p className="text-sm font-semibold">{title}</p>
                   <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">{copy}</p>
                 </div>
@@ -58,14 +58,14 @@ export default function LoginPage() {
           <SurfaceCard className="w-full">
             <div className="mx-auto max-w-sm">
               <span className="app-logo">M</span>
-              <h2 className="page-title mt-5 text-[2rem]">Sign in</h2>
+              <h2 className="page-title mt-5 text-[2rem]">Вход</h2>
               <p className="page-subtitle">
-                Access the MPM workspace. Demo mode accepts any email and password.
+                Демонстрационный доступ в терминал.
               </p>
 
               <form onSubmit={handleLogin} className="mt-8 space-y-4">
                 <label className="block">
-                  <span className="field-label">Email address</span>
+                  <span className="field-label">Email</span>
                   <input
                     type="email"
                     className="surface-input"
@@ -76,18 +76,18 @@ export default function LoginPage() {
                 </label>
 
                 <label className="block">
-                  <span className="field-label">Password</span>
+                  <span className="field-label">Пароль</span>
                   <input
                     type="password"
                     className="surface-input"
-                    placeholder="Enter password"
+                    placeholder="Введите пароль"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                   />
                 </label>
 
                 {error ? (
-                  <div className="rounded-[16px] bg-[var(--color-danger-soft)] px-4 py-3 text-sm text-[var(--color-danger)]">
+                  <div className="rounded-[12px] border border-[rgba(255,100,124,0.22)] bg-[var(--color-danger-soft)] px-4 py-3 text-sm text-[var(--color-text)]">
                     {error}
                   </div>
                 ) : null}
@@ -95,15 +95,15 @@ export default function LoginPage() {
                 <div className="flex items-center justify-between gap-3 text-sm text-[var(--color-text-muted)]">
                   <label className="flex items-center gap-2">
                     <input type="checkbox" />
-                    <span>Remember me</span>
+                    <span>Запомнить</span>
                   </label>
-                  <button type="button" className="text-[var(--color-primary)]">
-                    Forgot password
+                  <button type="button" className="text-[var(--color-primary-hover)]">
+                    Забыли пароль
                   </button>
                 </div>
 
                 <button type="submit" disabled={loading} className="surface-button w-full">
-                  {loading ? 'Signing in...' : 'Sign in'}
+                  {loading ? 'Вход...' : 'Войти'}
                 </button>
               </form>
             </div>

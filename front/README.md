@@ -24,14 +24,14 @@ The frontend:
 
 ```env
 NEXT_PUBLIC_API_URL=https://your-backend.onrender.com
-NEXT_PUBLIC_WS_URL=wss://your-backend.onrender.com/ws/trading
+NEXT_PUBLIC_WS_URL=wss://your-backend.onrender.com/ws/market/
 ```
 
 Local example:
 
 ```env
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8000/ws/trading
+NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8000/ws/market/
 ```
 
 ## Commands
@@ -52,7 +52,7 @@ npm run build
 
 ## Realtime Notes
 
-- The client opens `/ws/trading`
+- The client opens `/ws/market/`
 - It sends `SUBSCRIBE` with channels and symbols
 - It handles `HEARTBEAT` and responds with `PONG`
 - It reconnects automatically if the socket closes

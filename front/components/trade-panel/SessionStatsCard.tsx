@@ -12,15 +12,15 @@ export default function SessionStatsCard({ activeTradesCount, floatingPnL }: Pro
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <StatCard
-        label="Active trades"
+        label="Активные позиции"
         value={activeTradesCount.toString()}
-        helper="Positions currently open"
+        helper="Открыто сейчас"
         icon="LIV"
       />
       <StatCard
-        label="Floating PnL"
+        label="Плавающий PnL"
         value={formatPnL(floatingPnL)}
-        helper="Live mark-to-market result"
+        helper="Текущая переоценка"
         icon="P/L"
         tone={floatingPnL >= 0 ? 'success' : 'danger'}
       />

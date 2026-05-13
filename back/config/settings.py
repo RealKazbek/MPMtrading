@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 import dj_database_url
-from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,19 +29,27 @@ DEBUG = env_flag("DJANGO_DEBUG", env_flag("DEBUG", True))
 ENVIRONMENT = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production" or not DEBUG
 
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "ALLOWED_HOSTS", default="127.0.0.1,localhost")
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    "ALLOWED_HOSTS",
+    default="127.0.0.1,localhost,.onrender.com,mpmtrading.onrender.com",
+)
 ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
     "ALLOWED_ORIGINS",
     "CORS_ORIGIN",
-    default="http://localhost:3000,http://127.0.0.1:3000",
+    default="http://localhost:3000,http://127.0.0.1:3000,https://mpmtrading.netlify.app",
 )
 CORS_ALLOWED_ORIGINS = ALLOWED_ORIGINS
 CSRF_TRUSTED_ORIGINS = env_list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     default=",".join(ALLOWED_ORIGINS),
 )
-WS_ALLOWED_ORIGINS = env_list("WS_ALLOWED_ORIGINS", "WS_ORIGIN", default=",".join(ALLOWED_ORIGINS))
+WS_ALLOWED_ORIGINS = env_list(
+    "WS_ALLOWED_ORIGINS",
+    "WS_ORIGIN",
+    default="http://localhost:3000,http://127.0.0.1:3000,https://mpmtrading.netlify.app",
+)
 CORS_ALLOW_CREDENTIALS = env_flag("CORS_ALLOW_CREDENTIALS", True)
 
 INSTALLED_APPS = [
@@ -88,19 +95,24 @@ TEMPLATES = [
 ]
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ImproperlyConfigured("DATABASE_URL is required. Set it to the Neon PostgreSQL connection string with sslmode=require.")
-
-DATABASES = {
-    "default": dj_database_url.config(
-        default=DATABASE_URL,
-        conn_max_age=600,
-        conn_health_checks=True,
-        ssl_require=True,
-    ),
-}
-DATABASES["default"].setdefault("OPTIONS", {})
-DATABASES["default"]["OPTIONS"].setdefault("connect_timeout", int(os.getenv("DATABASE_CONNECT_TIMEOUT", "5")))
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+            ssl_require=True,
+        ),
+    }
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"].setdefault("connect_timeout", int(os.getenv("DATABASE_CONNECT_TIMEOUT", "5")))
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 AUTH_USER_MODEL = "trading.DashboardUser"
 
@@ -171,7 +183,7 @@ REST_FRAMEWORK = {
 MARKET_STREAM_INTERVAL_MS = int(os.getenv("MARKET_STREAM_INTERVAL_MS", "1500"))
 MARKET_DEFAULT_TIMEFRAME = os.getenv("MARKET_DEFAULT_TIMEFRAME", "1m")
 DEMO_USER_EMAIL = os.getenv("DEMO_USER_EMAIL", "trader@realtimedesk.dev")
-MARKET_STREAM_AUTOSTART = env_flag("MARKET_STREAM_AUTOSTART", False)
+MARKET_STREAM_AUTOSTART = False
 MARKET_STREAM_LOG_EVERY_N_TICKS = int(os.getenv("MARKET_STREAM_LOG_EVERY_N_TICKS", "20"))
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

@@ -15,7 +15,7 @@ export default function TradeTable({ trades, showAll = false }: Props) {
     return (
       <div className="py-12 text-center">
         <p className="text-sm text-[var(--color-text-muted)]">
-          No closed trades yet. Open a position to start building history.
+          Закрытых сделок пока нет.
         </p>
       </div>
     )
@@ -26,7 +26,7 @@ export default function TradeTable({ trades, showAll = false }: Props) {
       <table className="trade-table">
         <thead>
           <tr>
-            {['Instrument', 'Side', 'Entry', 'Exit', 'SL', 'TP', 'PnL', 'PnL %', 'Result', 'Opened', 'Closed'].map(
+            {['Инструмент', 'Сторона', 'Вход', 'Выход', 'SL', 'TP', 'PnL', 'PnL %', 'Итог', 'Открыта', 'Закрыта'].map(
               (heading) => (
                 <th key={heading}>{heading}</th>
               )
@@ -44,7 +44,7 @@ export default function TradeTable({ trades, showAll = false }: Props) {
                 <td className="font-semibold">{trade.instrument}</td>
                 <td>
                   <span className={directionClass}>
-                    {trade.direction}
+                    {trade.direction === 'BUY' ? 'BUY' : 'SELL'}
                   </span>
                 </td>
                 <td className="metric-value text-[var(--color-text-muted)]">
@@ -73,7 +73,7 @@ export default function TradeTable({ trades, showAll = false }: Props) {
                 </td>
                 <td>
                   <span className={isWin ? 'badge-profit' : 'badge-loss'}>
-                    {isWin ? 'Win' : 'Loss'}
+                    {isWin ? 'Плюс' : 'Минус'}
                   </span>
                 </td>
                 <td className="whitespace-nowrap text-xs text-[var(--color-text-muted)]">

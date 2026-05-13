@@ -33,36 +33,36 @@ export default function ProfilePage() {
 
       <main className="app-main page-stack">
         <PageHeader
-          eyebrow="Profile"
-          title="Trader profile"
-          subtitle="Core identity, performance summary and account preferences wrapped in the same restrained surface system."
+          eyebrow="Профиль"
+          title="Профиль трейдера"
+          subtitle="Счет, статистика и параметры аккаунта."
         />
 
         {profileState.error && !profile ? (
           <InlineMessage
-            actionLabel="Retry"
+            actionLabel="Повторить"
             description={profileState.error}
             onAction={() => {
               void useTradingStore.getState().loadProfile()
             }}
-            title="Profile unavailable"
+            title="Профиль недоступен"
             tone="danger"
           />
         ) : null}
 
         <SurfaceCard muted>
           <div className="flex flex-col gap-5 md:flex-row md:items-center">
-            <div className="app-logo h-16 w-16 rounded-[20px] text-xl">SP</div>
+            <div className="app-logo h-16 w-16 rounded-[16px] text-xl">SP</div>
             <div className="min-w-0">
-              <h2 className="section-title text-[1.3rem]">{profile?.name ?? 'Loading profile'}</h2>
-              <p className="section-subtitle">{profile?.email ?? 'Waiting for backend response'}</p>
+              <h2 className="section-title text-[1.3rem]">{profile?.name ?? 'Загрузка профиля'}</h2>
+              <p className="section-subtitle">{profile?.email ?? 'Ожидание ответа сервера'}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className="chip chip-active">{profile?.tier ?? 'Tier pending'}</span>
-                <span className="chip">{profile?.memberSince ? `Member since ${profile.memberSince}` : 'Member since --'}</span>
+                <span className="chip chip-active">{profile?.tier ?? 'Тариф уточняется'}</span>
+                <span className="chip">{profile?.memberSince ? `С ${profile.memberSince}` : 'С --'}</span>
               </div>
             </div>
             <div className="md:ml-auto md:text-right">
-              <p className="metric-label">Portfolio balance</p>
+              <p className="metric-label">Баланс портфеля</p>
               <p className="metric-value mt-2 text-[2rem] font-semibold">
                 {profileStats ? `$${formatCurrency(profileStats.balance)}` : '--'}
               </p>
@@ -84,14 +84,14 @@ export default function ProfilePage() {
             : profileStats
               ? (
                 <>
-                  <StatCard label="Balance" value={`$${formatCurrency(profileStats.balance)}`} helper="Current account value" icon="BAL" />
-                  <StatCard label="Total PnL" value={formatPnL(profileStats.totalPnl)} helper="All time" icon="PNL" tone={profileStats.totalPnl >= 0 ? 'success' : 'danger'} />
-                  <StatCard label="Win rate" value={`${profileStats.winRate.toFixed(1)}%`} helper={`${profileStats.totalTrades} total trades`} icon="WIN" />
-                  <StatCard label="Active trades" value={String(profileStats.activeTrades)} helper="Positions currently open" icon="LIV" />
-                  <StatCard label="Avg win" value={`+$${profileStats.averageWin.toFixed(2)}`} helper="Per winning trade" icon="A+" tone="success" />
-                  <StatCard label="Avg loss" value={`$${profileStats.averageLoss.toFixed(2)}`} helper="Per losing trade" icon="A-" tone="danger" />
-                  <StatCard label="Total trades" value={String(profileStats.totalTrades)} helper="Closed positions" icon="TRD" />
-                  <StatCard label="Profit factor" value={profileStats.profitFactor} helper="Avg win / avg loss" icon="PF" />
+                  <StatCard label="Баланс" value={`$${formatCurrency(profileStats.balance)}`} helper="Текущее значение счета" icon="BAL" />
+                  <StatCard label="Общий PnL" value={formatPnL(profileStats.totalPnl)} helper="За весь период" icon="PNL" tone={profileStats.totalPnl >= 0 ? 'success' : 'danger'} />
+                  <StatCard label="Винрейт" value={`${profileStats.winRate.toFixed(1)}%`} helper={`${profileStats.totalTrades} сделок`} icon="WIN" />
+                  <StatCard label="Активные" value={String(profileStats.activeTrades)} helper="Открыто сейчас" icon="LIV" />
+                  <StatCard label="Средний плюс" value={`+$${profileStats.averageWin.toFixed(2)}`} helper="На прибыльную сделку" icon="A+" tone="success" />
+                  <StatCard label="Средний минус" value={`$${profileStats.averageLoss.toFixed(2)}`} helper="На убыточную сделку" icon="A-" tone="danger" />
+                  <StatCard label="Всего сделок" value={String(profileStats.totalTrades)} helper="Закрытые позиции" icon="TRD" />
+                  <StatCard label="Profit factor" value={profileStats.profitFactor} helper="Средний плюс / минус" icon="PF" />
                 </>
               )
               : null}
@@ -101,8 +101,8 @@ export default function ProfilePage() {
           <SurfaceCard>
             <div className="card-header">
               <div>
-                <h2 className="section-title">Achievements</h2>
-                <p className="section-subtitle">Compact milestone markers without distracting visual noise.</p>
+                <h2 className="section-title">Достижения</h2>
+                <p className="section-subtitle">Ключевые этапы торговой активности.</p>
               </div>
             </div>
 
@@ -110,15 +110,15 @@ export default function ProfilePage() {
               {achievements.map((achievement) => (
                 <div
                   key={achievement.id}
-                  className="rounded-[18px] border px-4 py-4"
+                  className="rounded-[12px] border px-4 py-4"
                   style={{
-                    borderColor: achievement.earned ? 'rgba(239, 79, 136, 0.18)' : 'var(--color-border)',
-                    background: achievement.earned ? 'rgba(239, 79, 136, 0.07)' : 'rgba(255, 255, 255, 0.6)',
+                    borderColor: achievement.earned ? 'rgba(127, 147, 170, 0.24)' : 'var(--color-border)',
+                    background: achievement.earned ? 'rgba(127, 147, 170, 0.1)' : 'rgba(255, 255, 255, 0.02)',
                     color: achievement.earned ? 'var(--color-text)' : 'var(--color-text-muted)',
                   }}
                 >
                   <p className="text-sm font-semibold">{achievement.label}</p>
-                  <p className="mt-1 text-xs">{achievement.earned ? 'Unlocked' : achievement.description || 'In progress'}</p>
+                  <p className="mt-1 text-xs">{achievement.earned ? 'Получено' : achievement.description || 'В процессе'}</p>
                 </div>
               ))}
             </div>
@@ -127,8 +127,8 @@ export default function ProfilePage() {
           <SurfaceCard>
             <div className="card-header">
               <div>
-                <h2 className="section-title">Account settings</h2>
-                <p className="section-subtitle">A simple settings summary with the new shared spacing system.</p>
+                <h2 className="section-title">Параметры аккаунта</h2>
+                <p className="section-subtitle">Текущие настройки профиля.</p>
               </div>
             </div>
 
@@ -136,7 +136,7 @@ export default function ProfilePage() {
               {profileSettings.map((setting) => (
                 <div
                   key={setting.label}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--color-border)] bg-white/72 px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--color-border)] bg-white/[0.03] px-4 py-3"
                 >
                   <span className="text-sm font-medium text-[var(--color-text-muted)]">{setting.label}</span>
                   <span className="break-all text-sm font-medium">{setting.value}</span>
@@ -144,7 +144,7 @@ export default function ProfilePage() {
               ))}
             </div>
 
-            <button className="surface-button mt-5">Save changes</button>
+            <button className="surface-button mt-5">Сохранить</button>
           </SurfaceCard>
         </div>
       </main>

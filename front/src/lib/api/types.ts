@@ -1,5 +1,47 @@
 export type ConnectionStatus = 'LIVE' | 'CONNECTING' | 'OFFLINE'
 
+export interface MarketCandleDto {
+  close: number
+  high: number
+  low: number
+  open: number
+  timestamp: string
+}
+
+export interface MarketTick {
+  candle: MarketCandleDto
+  change: number
+  change_percent: number
+  displayName: string
+  price: number
+  pricePrecision: number
+  symbol: string
+  timestamp: string
+}
+
+export interface MarketInstrumentDto {
+  displayName: string
+  lotStep: number
+  minLot: number
+  pricePrecision: number
+  quantityPrecision: number
+  quoteCurrency: string
+  symbol: string
+}
+
+export interface MarketSnapshotMessage {
+  history: Record<string, MarketCandleDto[]>
+  instruments: MarketInstrumentDto[]
+  interval_seconds: number
+  market: Array<Omit<MarketTick, 'candle'>>
+  type: 'MARKET_SNAPSHOT'
+}
+
+export interface MarketBatchMessage {
+  type: 'MARKET_BATCH'
+  updates: MarketTick[]
+}
+
 export interface ApiErrorResponse {
   code?: string
   details?: unknown
@@ -203,6 +245,8 @@ export interface ErrorMessage {
 }
 
 export type TradingServerMessage =
+  | MarketBatchMessage
+  | MarketSnapshotMessage
   | BalanceUpdateMessage
   | CandleUpdateMessage
   | ErrorMessage

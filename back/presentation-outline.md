@@ -24,7 +24,7 @@
 
 ## 4. WebSocket Demonstration
 
-- connect to `WS /ws/trading`
+- connect to `WS /ws/market/`
 - subscribe to symbols
 - receive `PRICE_TICK` and `CANDLE_UPDATE`
 - show heartbeat and reconnect behavior

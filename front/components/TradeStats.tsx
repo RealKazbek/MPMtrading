@@ -1,22 +1,21 @@
 'use client'
 
 import { useShallow } from 'zustand/react/shallow'
-import { formatCurrency, formatPercent, formatPnL } from '@/lib/format'
-import { useTradingStore } from '@/store/tradingStore'
+import { formatPercent, formatPrice } from '@/lib/format'
 import InlineMessage from '@/components/ui/InlineMessage'
 import Skeleton from '@/components/ui/Skeleton'
 import StatCard from '@/components/ui/StatCard'
+import { useTradingStore } from '@/store/tradingStore'
 
 export default function TradeStats() {
-  const { dashboardState, sessionStats, summary } = useTradingStore(
+  const { dashboardState, market } = useTradingStore(
     useShallow((state) => ({
       dashboardState: state.dashboardState,
-      sessionStats: state.sessionStats,
-      summary: state.summary,
+      market: state.market,
     }))
   )
 
-  if (dashboardState.isLoading && !summary) {
+  if (dashboardState.isLoading && market.length === 0) {
     return (
       <div className="stats-grid">
         {Array.from({ length: 4 }).map((_, index) => (
@@ -33,57 +32,42 @@ export default function TradeStats() {
     )
   }
 
-  if (dashboardState.error && !summary) {
+  if (dashboardState.error && market.length === 0) {
     return (
       <InlineMessage
-        actionLabel="Retry"
+        actionLabel="Повторить"
         description={dashboardState.error}
         onAction={() => {
-          void useTradingStore.getState().bootstrapDashboard()
+          useTradingStore.getState().connectRealtime()
         }}
-        title="Dashboard data unavailable"
+        title="Поток рынка недоступен"
         tone="danger"
       />
     )
   }
 
-  if (!summary || !sessionStats) {
+  if (market.length === 0) {
     return (
       <InlineMessage
-        description="The backend did not return summary data for this session."
-        title="No summary data"
+        description="После подключения здесь появятся основные инструменты."
+        title="Ожидание котировок"
       />
     )
   }
 
   return (
     <div className="stats-grid">
-      <StatCard
-        label="Balance"
-        value={`$${formatCurrency(summary.balance)}`}
-        helper="Current account value"
-        icon="BAL"
-      />
-      <StatCard
-        label="Closed PnL"
-        value={formatPnL(summary.totalPnl)}
-        helper={`${sessionStats.closedTrades} closed trades`}
-        icon="PNL"
-        tone={summary.totalPnl >= 0 ? 'success' : 'danger'}
-      />
-      <StatCard
-        label="Open Exposure"
-        value={formatPnL(summary.floatingPnl)}
-        helper={`${summary.activeTrades} active position${summary.activeTrades === 1 ? '' : 's'}`}
-        icon="FLT"
-        tone={summary.floatingPnl >= 0 ? 'success' : 'danger'}
-      />
-      <StatCard
-        label="Win Rate"
-        value={formatPercent(summary.winRate).replace('+', '')}
-        helper={`${sessionStats.wins} wins tracked by backend`}
-        icon="WIN"
-      />
+      {market.map((item) => (
+        <StatCard
+          key={item.symbol}
+          label={item.symbol}
+          value={formatPrice(item.price, item.pricePrecision)}
+          helper={`${item.change >= 0 ? '+' : ''}${item.change.toFixed(item.pricePrecision)} · ${formatPercent(item.changePercent)}`}
+          icon={item.symbol.slice(0, 3)}
+          tone={item.change >= 0 ? 'success' : 'danger'}
+          className="surface-card-interactive"
+        />
+      ))}
     </div>
   )
 }

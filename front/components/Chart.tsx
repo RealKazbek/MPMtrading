@@ -2,28 +2,39 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { formatPnL, formatPrice } from '@/lib/format'
-import { useTradingStore, type CandleData, type Instrument } from '@/store/tradingStore'
+import { formatPercent, formatPrice } from '@/lib/format'
 import InlineMessage from '@/components/ui/InlineMessage'
 import Skeleton from '@/components/ui/Skeleton'
 import SurfaceCard from '@/components/ui/SurfaceCard'
+import { useTradingStore, type CandleData, type Instrument } from '@/store/tradingStore'
 
 type Props = {
   selectedInstrument: Instrument
   onInstrumentChange: (instrument: Instrument) => void
 }
 
+type ChartHandle = {
+  applyOptions: (options: Record<string, unknown>) => void
+  remove: () => void
+}
+
+type CandleSeriesHandle = {
+  setData: (data: Array<Record<string, unknown>>) => void
+}
+
 export default function Chart({ selectedInstrument, onInstrumentChange }: Props) {
-  const chartRef = useRef<HTMLDivElement>(null)
-  const seriesRef = useRef<unknown>(null)
-  const { activeTrades, candles, chartState, instruments, latestPrice, subscribeSymbol } = useTradingStore(
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartInstanceRef = useRef<ChartHandle | null>(null)
+  const latestCandlesRef = useRef<CandleData[]>([])
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const seriesRef = useRef<CandleSeriesHandle | null>(null)
+  const isDisposedRef = useRef(false)
+  const { candles, chartState, instruments, marketItem } = useTradingStore(
     useShallow((state) => ({
-      activeTrades: state.activeTrades,
       candles: state.candlesBySymbol[selectedInstrument] ?? [],
       chartState: state.chartStates[selectedInstrument],
       instruments: state.instruments,
-      latestPrice: state.currentPrices[selectedInstrument],
-      subscribeSymbol: state.subscribeSymbol,
+      marketItem: state.quotes[selectedInstrument],
     }))
   )
 
@@ -36,153 +47,145 @@ export default function Chart({ selectedInstrument, onInstrumentChange }: Props)
     [instruments, selectedInstrument]
   )
   const pricePrecision = instrumentMeta?.pricePrecision
-  const instrumentTrades = useMemo(
-    () => activeTrades.filter((trade) => trade.instrument === selectedInstrument),
-    [activeTrades, selectedInstrument]
-  )
 
   useEffect(() => {
-    subscribeSymbol(selectedInstrument)
-  }, [selectedInstrument, subscribeSymbol])
+    latestCandlesRef.current = candles
+  }, [candles])
 
   useEffect(() => {
-    let mounted = true
-    let cleanupFn: (() => void) | undefined
+    let cancelled = false
 
     const init = async () => {
-      if (!chartRef.current || !mounted) return
+      if (!containerRef.current || chartInstanceRef.current || cancelled) return
 
       const { createChart } = await import('lightweight-charts')
-      if (!chartRef.current || !mounted) return
+      if (!containerRef.current || cancelled || chartInstanceRef.current) return
 
-      chartRef.current.innerHTML = ''
+      isDisposedRef.current = false
 
-      const chart = createChart(chartRef.current, {
-        width: chartRef.current.clientWidth,
-        height: chartRef.current.clientHeight,
+      const chart = createChart(containerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: containerRef.current.clientHeight,
         layout: {
           background: { color: 'transparent' },
-          textColor: '#7f6770',
+          textColor: '#92a0b2',
           fontFamily: 'var(--font-body)',
         },
         grid: {
-          horzLines: { color: 'rgba(241, 217, 227, 0.45)' },
-          vertLines: { color: 'rgba(241, 217, 227, 0.6)' },
+          horzLines: { color: 'rgba(130, 142, 158, 0.12)' },
+          vertLines: { color: 'rgba(130, 142, 158, 0.08)' },
         },
         crosshair: {
-          horzLine: { color: 'rgba(239, 79, 136, 0.4)', labelBackgroundColor: '#ef4f88' },
-          vertLine: { color: 'rgba(239, 79, 136, 0.4)', labelBackgroundColor: '#ef4f88' },
+          horzLine: { color: 'rgba(127, 147, 170, 0.42)', labelBackgroundColor: '#5f7288' },
+          vertLine: { color: 'rgba(127, 147, 170, 0.42)', labelBackgroundColor: '#5f7288' },
         },
         handleScale: true,
         handleScroll: true,
         rightPriceScale: {
-          borderColor: 'rgba(231, 196, 211, 0.75)',
+          borderColor: 'rgba(130, 142, 158, 0.18)',
         },
         timeScale: {
-          borderColor: 'rgba(231, 196, 211, 0.75)',
+          borderColor: 'rgba(130, 142, 158, 0.18)',
           secondsVisible: false,
           timeVisible: true,
         },
       })
 
-      const series = (chart as { addCandlestickSeries: (options: unknown) => unknown }).addCandlestickSeries({
-        borderDownColor: '#df3e65',
-        borderUpColor: '#18a775',
-        downColor: '#ef476f',
-        upColor: '#1bbf83',
-        wickDownColor: '#ef476f',
-        wickUpColor: '#1bbf83',
+      const series = chart.addCandlestickSeries({
+        borderDownColor: '#ff6e84',
+        borderUpColor: '#21c67a',
+        downColor: '#ff647c',
+        upColor: '#21c67a',
+        wickDownColor: '#ff647c',
+        wickUpColor: '#21c67a',
       })
+      const safeSeries = series as unknown as CandleSeriesHandle
 
-      seriesRef.current = series
+      chartInstanceRef.current = chart as unknown as ChartHandle
+      seriesRef.current = safeSeries
 
       const resizeObserver = new ResizeObserver(() => {
-        if (!chartRef.current) return
+        if (!containerRef.current || !chartInstanceRef.current || isDisposedRef.current) return
 
-        ;(chart as { applyOptions: (options: unknown) => void }).applyOptions({
-          height: chartRef.current.clientHeight,
-          width: chartRef.current.clientWidth,
+        chartInstanceRef.current.applyOptions({
+          height: containerRef.current.clientHeight,
+          width: containerRef.current.clientWidth,
         })
       })
 
-      resizeObserver.observe(chartRef.current)
+      resizeObserver.observe(containerRef.current)
+      resizeObserverRef.current = resizeObserver
 
-      cleanupFn = () => {
-        resizeObserver.disconnect()
-        ;(chart as { remove: () => void }).remove()
+      if (latestCandlesRef.current.length > 0 && !isDisposedRef.current) {
+        safeSeries.setData(latestCandlesRef.current as unknown as Array<Record<string, unknown>>)
       }
     }
 
     void init()
 
     return () => {
-      mounted = false
-      cleanupFn?.()
+      cancelled = true
+
+      const observer = resizeObserverRef.current
+      resizeObserverRef.current = null
+      if (observer) {
+        try {
+          observer.disconnect()
+        } catch {
+          // Ignore cleanup races in React StrictMode.
+        }
+      }
+
+      const chart = chartInstanceRef.current
+      chartInstanceRef.current = null
+      seriesRef.current = null
+      isDisposedRef.current = true
+
+      if (chart) {
+        try {
+          chart.remove()
+        } catch {
+          // Ignore double-dispose noise from dev unmount races.
+        }
+      }
     }
-  }, [selectedInstrument])
+  }, [])
 
   useEffect(() => {
-    if (!seriesRef.current) return
-    if (candles.length === 0) return
+    if (!seriesRef.current || isDisposedRef.current) return
 
-    ;(seriesRef.current as { setData: (data: CandleData[]) => void }).setData(candles)
+    seriesRef.current.setData(candles as unknown as Array<Record<string, unknown>>)
     setCurrentCandle(candles[candles.length - 1] ?? null)
   }, [candles])
 
   useEffect(() => {
-    if (latestPrice === undefined || previousLastPrice.current === null) {
-      previousLastPrice.current = latestPrice ?? null
+    if (marketItem?.price === undefined || previousLastPrice.current === null) {
+      previousLastPrice.current = marketItem?.price ?? null
       return
     }
 
-    if (latestPrice === previousLastPrice.current) return
+    if (marketItem.price === previousLastPrice.current) return
 
-    setPriceChange(latestPrice > previousLastPrice.current ? 'up' : 'down')
-    previousLastPrice.current = latestPrice
+    setPriceChange(marketItem.price > previousLastPrice.current ? 'up' : 'down')
+    previousLastPrice.current = marketItem.price
 
     const timeout = window.setTimeout(() => setPriceChange(null), 450)
     return () => window.clearTimeout(timeout)
-  }, [latestPrice])
-
-  useEffect(() => {
-    if (!seriesRef.current) return
-
-    const markers = instrumentTrades.flatMap((trade) => {
-      if (candles.length === 0) return []
-
-      const entryTime = Math.floor(new Date(trade.openTime).getTime() / 1000)
-      const closestCandle = candles.reduce((previous, current) =>
-        Math.abs(current.time - entryTime) < Math.abs(previous.time - entryTime) ? current : previous
-      )
-
-      return [
-        {
-          color: trade.direction === 'BUY' ? '#1bbf83' : '#ef476f',
-          position: trade.direction === 'BUY' ? 'belowBar' : 'aboveBar',
-          shape: trade.direction === 'BUY' ? 'arrowUp' : 'arrowDown',
-          size: 1,
-          text: `${trade.direction} @ ${formatPrice(trade.entryPrice, pricePrecision)}`,
-          time: closestCandle.time,
-        },
-      ]
-    })
-
-    ;(seriesRef.current as { setMarkers: (markers: unknown[]) => void }).setMarkers(markers)
-  }, [candles, instrumentTrades, pricePrecision])
+  }, [marketItem])
 
   return (
     <SurfaceCard className="chart-card" padded={false}>
       <div className="surface-card-padding">
         <div className="chart-header">
           <div className="min-w-0">
-            <span className="eyebrow">Market</span>
-            <h2 className="section-title mt-3 text-[1.05rem]">Live chart</h2>
-            <p className="section-subtitle">Realtime candles from API with websocket updates and polling fallback.</p>
+            <span className="eyebrow">Рынок</span>
+            <h2 className="section-title mt-3 text-[1.05rem]">График</h2>
+            <p className="section-subtitle">Локально сгенерированные свечи и динамика инструмента.</p>
           </div>
 
           <div className="min-w-0">
             {chartState?.isLoading && candles.length === 0 ? (
-              <div className="rounded-[18px] border border-[var(--color-border)] bg-white/76 px-4 py-3">
+              <div className="rounded-[12px] border border-[var(--color-border)] bg-white/[0.03] px-4 py-3">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="mt-3 h-7 w-28" />
                 <div className="mt-3 flex justify-end gap-2">
@@ -191,11 +194,11 @@ export default function Chart({ selectedInstrument, onInstrumentChange }: Props)
                   <Skeleton className="h-3 w-16" />
                 </div>
               </div>
-            ) : currentCandle ? (
-              <div className="rounded-[18px] border border-[var(--color-border)] bg-white/76 px-4 py-3 text-right">
+            ) : currentCandle && marketItem ? (
+              <div className="rounded-[12px] border border-[var(--color-border)] bg-white/[0.03] px-4 py-3 text-right">
                 <p className="metric-label">{selectedInstrument}</p>
                 <p
-                  className="metric-value mt-1 text-xl font-semibold"
+                  className={`metric-value mt-1 text-xl font-semibold ${priceChange === 'up' ? 'price-flash-up' : priceChange === 'down' ? 'price-flash-down' : ''}`}
                   style={{
                     color:
                       priceChange === 'up'
@@ -205,9 +208,12 @@ export default function Chart({ selectedInstrument, onInstrumentChange }: Props)
                           : 'var(--color-text)',
                   }}
                 >
-                  {formatPrice(latestPrice ?? currentCandle.close, pricePrecision)}
+                  {formatPrice(marketItem.price ?? currentCandle.close, pricePrecision)}
                 </p>
                 <div className="mt-2 flex flex-wrap justify-end gap-2 text-xs text-[var(--color-text-muted)]">
+                  <span style={{ color: marketItem.change >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    {formatPercent(marketItem.changePercent)}
+                  </span>
                   <span>O {formatPrice(currentCandle.open, pricePrecision)}</span>
                   <span>H {formatPrice(currentCandle.high, pricePrecision)}</span>
                   <span>L {formatPrice(currentCandle.low, pricePrecision)}</span>
@@ -223,7 +229,7 @@ export default function Chart({ selectedInstrument, onInstrumentChange }: Props)
               key={instrument.symbol}
               type="button"
               onClick={() => onInstrumentChange(instrument.symbol)}
-              className={instrument.symbol === selectedInstrument ? 'chip chip-active' : 'chip'}
+              className={instrument.symbol === selectedInstrument ? 'chip chip-active transition-all duration-150' : 'chip transition-all duration-150'}
             >
               {instrument.symbol}
             </button>
@@ -234,12 +240,12 @@ export default function Chart({ selectedInstrument, onInstrumentChange }: Props)
       {chartState?.error && candles.length === 0 ? (
         <div className="surface-card-padding pt-0">
           <InlineMessage
-            actionLabel="Retry"
-            description="Candles could not be loaded from the backend. Check the API response and try again."
+            actionLabel="Повторить"
+            description="Не удалось получить локальную историю свечей."
             onAction={() => {
-              void useTradingStore.getState().fetchCandles(selectedInstrument)
+              void useTradingStore.getState().bootstrapDashboard()
             }}
-            title="Chart unavailable"
+            title="График недоступен"
             tone="danger"
           />
         </div>
@@ -248,30 +254,13 @@ export default function Chart({ selectedInstrument, onInstrumentChange }: Props)
       {!chartState?.isLoading && !chartState?.error && candles.length === 0 ? (
         <div className="surface-card-padding pt-0">
           <InlineMessage
-            description="No candle data is available for this instrument yet."
-            title="No market data"
+            description="Для выбранного инструмента свечи пока не накопились."
+            title="Нет данных графика"
           />
         </div>
       ) : (
-        <div ref={chartRef} className="chart-surface" />
+        <div ref={containerRef} className="chart-surface" />
       )}
-
-      {instrumentTrades.length > 0 ? (
-        <div className="surface-card-padding pt-0">
-          <div className="chart-trade-legend">
-            {instrumentTrades.map((trade) => (
-              <div
-                key={trade.id}
-                className={trade.direction === 'BUY' ? 'trade-pill trade-pill-buy' : 'trade-pill trade-pill-sell'}
-              >
-                <span>{trade.direction}</span>
-                <span>@ {formatPrice(trade.entryPrice, pricePrecision)}</span>
-                <span>{formatPnL(trade.pnl)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </SurfaceCard>
   )
 }

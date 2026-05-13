@@ -75,12 +75,12 @@ export default function TradeForm({
         <InlineMessage
           className="mb-4"
           description={tradeActionState.error}
-          title="Trade request failed"
+          title="Не удалось отправить заявку"
           tone="danger"
         />
       ) : null}
 
-      <FormField label="Instrument">
+      <FormField label="Инструмент">
         <select
           className="surface-select"
           value={selectedInstrument}
@@ -94,15 +94,15 @@ export default function TradeForm({
         </select>
       </FormField>
 
-      <div className="rounded-[16px] border border-[var(--color-border)] bg-[var(--color-bg-soft)] px-4 py-3">
-        <p className="metric-label">Current market price</p>
+      <div className="rounded-[12px] border border-[var(--color-border)] bg-[rgba(255,255,255,0.03)] px-4 py-3">
+        <p className="metric-label">Текущая цена</p>
         <p className="metric-value mt-1 text-lg font-semibold">
           {currentPrice ? formatPrice(currentPrice, pricePrecision) : '--'}
         </p>
       </div>
 
       <div>
-        <span className="field-label">Direction</span>
+        <span className="field-label">Направление</span>
         <div className="grid grid-cols-2 gap-2">
           {(['BUY', 'SELL'] as Direction[]).map((value) => {
             const active = direction === value
@@ -122,27 +122,27 @@ export default function TradeForm({
                 onClick={() => setDirection(value)}
                 className={`${className} w-full`}
               >
-                {value}
+                {value === 'BUY' ? 'BUY' : 'SELL'}
               </button>
             )
           })}
         </div>
       </div>
 
-      <FormField label="Entry price">
+      <FormField label="Цена входа">
         <input
           className="surface-input"
           type="number"
           inputMode="decimal"
           step="0.00001"
-          placeholder={currentPrice ? `Market (${formatPrice(currentPrice, pricePrecision)})` : 'Market'}
+          placeholder={currentPrice ? `Рынок (${formatPrice(currentPrice, pricePrecision)})` : 'Рынок'}
           value={entry}
           onChange={(event) => setEntry(event.target.value)}
         />
       </FormField>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField label="Stop loss">
+        <FormField label="Стоп-лосс">
           <input
             className="surface-input"
             type="number"
@@ -154,7 +154,7 @@ export default function TradeForm({
           />
         </FormField>
 
-        <FormField label="Take profit">
+        <FormField label="Тейк-профит">
           <input
             className="surface-input"
             type="number"
@@ -167,7 +167,7 @@ export default function TradeForm({
         </FormField>
       </div>
 
-      <FormField label="Lot size">
+      <FormField label="Объем">
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             className="surface-input flex-1"
@@ -199,7 +199,7 @@ export default function TradeForm({
         disabled={tradeActionState.isLoading}
         className={direction === 'BUY' ? 'surface-button-success w-full' : 'surface-button-danger w-full'}
       >
-        {tradeActionState.isLoading ? 'Submitting...' : submitted ? 'Trade opened' : `Open ${direction} trade`}
+        {tradeActionState.isLoading ? 'Отправка...' : submitted ? 'Сделка открыта' : direction === 'BUY' ? 'Открыть BUY' : 'Открыть SELL'}
       </button>
     </div>
   )

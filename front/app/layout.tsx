@@ -1,22 +1,30 @@
 import type { Metadata } from 'next'
-import { Fraunces, Manrope } from 'next/font/google'
+import { IBM_Plex_Mono, IBM_Plex_Sans, Space_Grotesk } from 'next/font/google'
 import './globals.css'
 
-const manrope = Manrope({
-  subsets: ['latin'],
-  variable: '--font-manrope',
+const plexSans = IBM_Plex_Sans({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-plex-sans',
   display: 'swap',
 })
 
-const fraunces = Fraunces({
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['400', '500', '600'],
+  variable: '--font-plex-mono',
+  display: 'swap',
+})
+
+const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
-  variable: '--font-fraunces',
+  variable: '--font-space-grotesk',
   display: 'swap',
 })
 
 export const metadata: Metadata = {
-  title: 'MPM Trading',
-  description: 'MPM trading dashboard for Serik Perizat',
+  title: 'MPM Торговый терминал',
+  description: 'Учебный realtime-дашборд с котировками через WebSocket.',
 }
 
 export default function RootLayout({
@@ -25,8 +33,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={`${manrope.variable} ${fraunces.variable}`}>
+    <html lang="ru">
+      <body className={`${plexSans.variable} ${plexMono.variable} ${spaceGrotesk.variable}`}>
         {children}
       </body>
     </html>

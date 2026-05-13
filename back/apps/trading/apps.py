@@ -6,8 +6,3 @@ class TradingConfig(AppConfig):
     name = "apps.trading"
     label = "trading"
     verbose_name = "Realtime Trading"
-
-    def ready(self):
-        from apps.trading.realtime.market_stream import maybe_start_market_stream
-
-        maybe_start_market_stream()

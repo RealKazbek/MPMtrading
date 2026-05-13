@@ -8,10 +8,10 @@ export default function NotFound() {
       <div className="not-found-card">
         <SurfaceCard className="not-found-visual flex flex-col justify-between">
           <div>
-            <span className="eyebrow">Route error</span>
+            <span className="eyebrow">Маршрут</span>
             <p className="not-found-code mt-5">404</p>
             <p className="page-subtitle mt-4 max-w-none">
-              This route dropped out of the stack before the order could be filled.
+              Страница не найдена.
             </p>
           </div>
 
@@ -26,18 +26,18 @@ export default function NotFound() {
         </SurfaceCard>
 
         <SurfaceCard className="flex flex-col justify-center">
-          <span className="eyebrow">Recovery</span>
-          <h1 className="page-title mt-5 max-w-[12ch]">The page moved faster than your stop loss.</h1>
+          <span className="eyebrow">Навигация</span>
+          <h1 className="page-title mt-5 max-w-[12ch]">Запрошенная страница недоступна.</h1>
           <p className="page-subtitle">
-            The good news: the dashboard is still intact, the journal is safe, and the rest of the workspace is ready for the next decision.
+            Вернитесь в терминал или откройте журнал сделок.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/dashboard/" className="surface-button">
-              Back to dashboard
+              В терминал
             </Link>
             <Link href="/history/" className="surface-button-ghost">
-              Open trade history
+              Открыть историю
             </Link>
           </div>
         </SurfaceCard>

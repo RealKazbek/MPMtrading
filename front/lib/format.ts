@@ -1,12 +1,12 @@
 export function formatCurrency(value: number) {
-  return value.toLocaleString('en-US', {
+  return value.toLocaleString('ru-RU', {
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
   })
 }
 
 export function formatCurrencyCompact(value: number) {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('ru-RU', {
     currency: 'USD',
     maximumFractionDigits: 2,
     notation: 'compact',
@@ -38,7 +38,7 @@ export function formatPrice(value: number, precision?: number) {
 export function formatTradeDate(iso: string) {
   const date = new Date(iso)
 
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
