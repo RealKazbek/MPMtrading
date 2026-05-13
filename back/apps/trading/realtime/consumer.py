@@ -12,11 +12,12 @@ from apps.trading.realtime.simulator import market_simulator
 logger = logging.getLogger(__name__)
 
 
-class TradingConsumer(AsyncWebsocketConsumer):
+class MarketConsumer(AsyncWebsocketConsumer):
     heartbeat_task: asyncio.Task | None = None
     market_task: asyncio.Task | None = None
 
     async def connect(self):
+        logger.info("WebSocket CONNECT path=%s channel=%s", self.scope.get("path"), self.channel_name)
         await self.accept()
         await self.send(
             text_data=json.dumps(market_simulator.snapshot())
@@ -31,6 +32,12 @@ class TradingConsumer(AsyncWebsocketConsumer):
         if self.market_task:
             self.market_task.cancel()
 
+        logger.info(
+            "WebSocket DISCONNECT path=%s channel=%s code=%s",
+            self.scope.get("path"),
+            self.channel_name,
+            close_code,
+        )
         logger.info("Market WebSocket disconnected: channel=%s code=%s", self.channel_name, close_code)
 
     async def receive(self, text_data=None, bytes_data=None):
@@ -93,3 +100,6 @@ class TradingConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+
+
+TradingConsumer = MarketConsumer

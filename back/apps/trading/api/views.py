@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import connection
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -23,6 +24,14 @@ class DemoUserMixin:
 class DashboardSnapshotView(DemoUserMixin, APIView):
     def get(self, request):
         return Response(build_dashboard_snapshot(self.get_demo_user()))
+
+
+class SimpleHealthView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return JsonResponse({"ok": True})
 
 
 class HealthCheckView(APIView):
